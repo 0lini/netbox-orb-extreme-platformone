@@ -86,9 +86,10 @@ username/password login or a static API token):
   default).
 - **ConfigState API** (`POST /configstate/v1/retrieve-*`) — per-device
   configuration and state tables listed in the call phases below. Every
-  filter field accepts a list, so each retrieve covers the whole in-scope
-  device (or interface) set in one batched call rather than one call per
-  device. No undocumented endpoints are used.
+  filter field accepts a list, so each retrieve covers the in-scope device
+  (or interface) set in batched calls rather than one call per device.
+  Oversized ID lists are chunked (200 IDs per request) so large estates stay
+  within gateway body limits. No undocumented endpoints are used.
 
 ### Extract call phases
 
@@ -451,10 +452,11 @@ transformed from ConfigState tables joined on `asset_interface_id`
   against production hardware are mapped (`oper_speed 4` = 1 Gbit/s,
   `connector_type 1/2` = copper/fiber → `1000base-t` / `1000base-x-sfp`).
   Unknown speed/connector codes leave speed unset but set Interface `type`
-  to `other` (NetBox requires a non-blank type). **Duplex** uses the
-  verified Platform ONE enum on `oper_duplex` (1 = half, 2 = full);
-  when oper is unset, config `duplex` is the fallback (also 4 = auto).
-  Config-side `speed` remains unverified and is not used. MACs are
+  to `other`. When port-state is absent entirely, `type` is omitted so a
+  state-table degrade cannot overwrite a previously good type with `other`.
+  **Duplex** uses the verified Platform ONE enum on `oper_duplex` (1 = half,
+  2 = full); when oper is unset, config `duplex` is the fallback (also 4 =
+  auto). Config-side `speed` remains unverified and is not used. MACs are
   uppercased (Meraki posture).
 
 ### LAG interfaces and membership
@@ -514,18 +516,21 @@ switch-only). Tables used:
 Each radio becomes a NetBox `Interface` with native RF fields: `rf_role`
 always `"ap"` when `type` is an `ieee802.11*` wireless type, `enabled` from
 wireless-interface config, `type` from `radio_mode` (including
-`ieee802.11be` for Wi‑Fi 7; unknown/missing mode → `other` **without** RF
-fields — NetBox rejects `rf_role` / channel fields on non-wireless types),
-`tx_power` from `power`, `primary_mac_address` from `bssid` (uppercase),
-`rf_channel_frequency` from IEEE channel formulas on `band` + `channel`
-(including string labels such as `BAND_5_GHZ`), and `rf_channel_width` when
-`channel_width` is already a standard MHz value (20/40/80/160/320). NetBox's
-`rf_channel` string is not asserted.
+`ieee802.11be` for Wi‑Fi 7; state present but unknown mode → `other`
+**without** RF / `wireless_lans`; config-only with no state omits `type` so
+a wireless-state degrade cannot invent `other`), `tx_power` from `power`,
+`primary_mac_address` from `bssid` (uppercase), `rf_channel_frequency` from
+IEEE channel formulas on `band` + `channel` (including string labels such as
+`BAND_5_GHZ`), and `rf_channel_width` when `channel_width` is already a
+standard MHz value (20/40/80/160/320). NetBox's `rf_channel` string is not
+asserted.
 
 SSIDs become `WirelessLAN` entities (`ssid`, `status`, `auth_type`,
 `auth_cipher` — see status/auth tables above). They are deduped by SSID name
 across every AP and are **not** site-scoped (same SSID can broadcast in many
-sites). Radios link to WLANs via NetBox's native `wireless_lans` field using
+sites). Across APs, `enabled` is OR'd (active if any AP broadcasts the SSID)
+and conflicting `encryption` values keep the first with a warning. Radios
+link to WLANs via NetBox's native `wireless_lans` field using
 `AssetSsid*.if_names` and any `ssid_name` on wireless interface state.
 
 ### VirtualChassis from inferred clusters
@@ -554,8 +559,11 @@ AssetDevice UUIDs, and transforms each complete in-scope pair to a NetBox
 - **`platformone_cluster_id`** stores the InferredCluster UUID for stable
   correlation; provenance tags match other synced objects.
 - Clusters where either member is missing from the scoped device set are
-  skipped. A failed cluster extract degrades to no VirtualChassis for that
-  tick rather than aborting the sync.
+  skipped. Each cluster member-side filter degrades independently (one-sided
+  failure still keeps the other). A total cluster extract failure degrades to
+  no VirtualChassis updates for that tick rather than aborting the sync.
+  Diode cannot clear `virtual_chassis` when omitted, so a device that leaves
+  a cluster may keep a prior NetBox membership until edited manually.
 
 Not mapped (no sensible Platform ONE source, or intentionally NetBox-owned):
 `description`, `domain`, `comments`, `owner`, Diode `metadata`, Device
