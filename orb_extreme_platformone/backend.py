@@ -252,8 +252,11 @@ class Backend(WorkerBackend):
         try:
             clusters = extract_inferred_clusters(client, device_ids)
         except PlatformOneApiError as exc:
+            # Diode upsert cannot clear virtual_chassis when omitted, so a failed
+            # fetch leaves prior NetBox memberships sticky until a later success.
             logger.warning(
-                "Policy %s: ConfigState inferred-cluster fetch failed, syncing without VirtualChassis: %s",
+                "Policy %s: ConfigState inferred-cluster fetch failed, syncing without "
+                "VirtualChassis updates (prior NetBox memberships may remain): %s",
                 policy_name,
                 exc,
             )
@@ -263,6 +266,16 @@ class Backend(WorkerBackend):
             clusters,
             records_by_cs_id=records_by_cs_id,
         )
+        unclustered = sorted(set(records_by_cs_id) - set(memberships))
+        if unclustered:
+            # Diode has no null-clear for virtual_chassis; devices that left a
+            # cluster keep any prior NetBox membership until edited manually.
+            logger.info(
+                "Policy %s: %d in-scope device(s) have no InferredCluster membership "
+                "this tick; Diode will not clear a prior VirtualChassis link",
+                policy_name,
+                len(unclustered),
+            )
         logger.info(
             "Policy %s: mapped %d VirtualChassis entities from %d InferredCluster rows",
             policy_name,

@@ -472,12 +472,50 @@ def test_run_survives_a_failed_inferred_cluster_fetch():
     _mock_cs("asset-location", "AssetLocation", [])
     _mock_empty_port_and_lag_tables()
     _mock_cs("inferred-device", "InferredDevice", [{"id": "inf-uuid-42", "asset_device_id": "cs-uuid-42"}])
+    # Both member-side filters fail → extract raises; backend degrades VC.
+    _mock_cs("inferred-cluster", "InferredCluster", [], status=500)
     _mock_cs("inferred-cluster", "InferredCluster", [], status=500)
 
     entities = list(Backend().run("platformone_worker", _policy()))
 
     assert [e.device.name for e in entities if e.HasField("device")] == ["sw-idf1"]
     assert not [e for e in entities if e.HasField("virtual_chassis")]
+
+
+@responses.activate
+def test_run_keeps_virtual_chassis_when_one_cluster_filter_fails(caplog):
+    """One member-side inferred-cluster filter can fail without dropping VC."""
+    switch2 = {**SWITCH_ASSET, "device_id": 43, "host_name": "sw-idf2", "serial_number": "SN43"}
+    cs2 = {"id": "cs-uuid-43", "serial_number": "SN43"}
+    _mock_assets([SWITCH_ASSET, switch2])
+    _mock_cs("asset-device", "AssetDevice", [CS_SWITCH, cs2])
+    _mock_cs("asset-location", "AssetLocation", [])
+    _mock_empty_port_and_lag_tables()
+    _mock_cs(
+        "inferred-device",
+        "InferredDevice",
+        [
+            {"id": "inf-uuid-42", "asset_device_id": "cs-uuid-42"},
+            {"id": "inf-uuid-43", "asset_device_id": "cs-uuid-43"},
+        ],
+    )
+    cluster = {
+        "id": "cluster-uuid-1",
+        "device_one_id": "inf-uuid-42",
+        "device_two_id": "inf-uuid-43",
+        "device_one_peer_name": "peer-b",
+        "device_two_peer_name": "peer-a",
+    }
+    # First filter (device_one_id) succeeds; second (device_two_id) fails.
+    _mock_cs("inferred-cluster", "InferredCluster", [cluster])
+    _mock_cs("inferred-cluster", "InferredCluster", [], status=500)
+
+    entities = list(Backend().run("platformone_worker", _policy()))
+
+    chassis = [e.virtual_chassis for e in entities if e.HasField("virtual_chassis")]
+    assert len(chassis) == 1
+    assert chassis[0].name == "peer-a / peer-b"
+    assert "continuing with other member side" in caplog.text
 
 
 @responses.activate

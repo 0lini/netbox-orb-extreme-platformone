@@ -361,12 +361,14 @@ def test_ports_to_entities_maps_config_state_and_vlans_onto_one_interface(stub_s
 
 
 def test_ports_to_entities_config_only_port_still_syncs_admin_state(stub_sdk):
+    """No port-state: admin state syncs; type omitted so degrade cannot invent other."""
     entities = transform.ports_to_entities(_tables(port_states=[], vlan_properties=[]), device="sw-idf1")
 
     port = entities[0]._kw["interface"]._kw
     assert port["enabled"] is True
     assert "mark_connected" not in port
     assert "speed" not in port
+    assert "type" not in port
 
 
 def test_ports_to_entities_state_only_port_still_syncs_link_state(stub_sdk):
@@ -974,6 +976,68 @@ def test_ports_to_entities_uses_state_lag_name_for_config_members(stub_sdk):
     assert ports["1/2"]["lag"]._kw["name"] == "state-lag"
 
 
+def test_ports_to_entities_uses_state_member_ports_when_config_omits_them(stub_sdk):
+    """When lag-config has no member_ports, fall back to lag-state members."""
+    lag_config = {**LAG_CONFIG, "member_ports": []}
+    lag_state = {
+        "asset_device_id": "cs-uuid-42",
+        "asset_interface_id": "lag-if-1",
+        "name": "lag1",
+        "member_ports": [
+            {"interface_name": "1/1"},
+            {"interface_name": "1/2"},
+        ],
+    }
+    port2 = {**PORT_CONFIG, "asset_interface_id": "if-uuid-2", "name": "1/2"}
+    entities = transform.ports_to_entities(
+        _tables(
+            port_configs=[PORT_CONFIG, port2],
+            port_states=[],
+            vlan_properties=[],
+            lag_configs=[lag_config],
+            lag_states=[lag_state],
+        ),
+        device="sw-idf1",
+    )
+    ports = {e._kw["interface"]._kw["name"]: e._kw["interface"]._kw for e in entities}
+    assert ports["1/1"]["lag"]._kw["name"] == "lag1"
+    assert ports["1/2"]["lag"]._kw["name"] == "lag1"
+
+
+def test_ports_to_entities_warns_on_dual_lag_membership(stub_sdk, caplog):
+    lag_a = {**LAG_CONFIG, "name": "lag-a", "member_ports": [{"interface_name": "1/1"}]}
+    lag_b = {
+        **LAG_CONFIG,
+        "asset_interface_id": "lag-if-2",
+        "name": "lag-b",
+        "member_ports": [{"interface_name": "1/1"}],
+    }
+    entities = transform.ports_to_entities(
+        _tables(
+            port_states=[],
+            vlan_properties=[],
+            lag_configs=[lag_a, lag_b],
+            lag_states=[],
+        ),
+        device="sw-idf1",
+    )
+    ports = {e._kw["interface"]._kw["name"]: e._kw["interface"]._kw for e in entities}
+    assert ports["1/1"]["lag"]._kw["name"] == "lag-a"
+    assert "listed as member of both" in caplog.text
+
+
+def test_ports_to_entities_warns_on_conflicting_port_vlan(stub_sdk, caplog):
+    vlan_a = {**VLAN_PROPERTIES, "port_vlan": 10, "vlans": [{"vlan_number": 10}]}
+    vlan_b = {**VLAN_PROPERTIES, "port_vlan": 20, "vlans": [{"vlan_number": 20}]}
+    port = (
+        transform.ports_to_entities(_tables(vlan_properties=[vlan_a, vlan_b]), device="sw-idf1")[0]
+        ._kw["interface"]
+        ._kw
+    )
+    assert port["untagged_vlan"]._kw["vid"] == 10
+    assert "Conflicting port_vlan" in caplog.text
+
+
 def test_ports_to_entities_emits_duplicate_port_when_lag_is_unnamed(stub_sdk):
     """Unnamed LAG must not suppress a port-table row that shares its interface id."""
     lag = {**LAG_CONFIG, "name": None, "member_ports": []}
@@ -997,7 +1061,8 @@ def test_ports_to_entities_emits_duplicate_port_when_lag_is_unnamed(stub_sdk):
     ports = [e._kw["interface"]._kw for e in entities]
     assert len(ports) == 1
     assert ports[0]["name"] == "port-table-lag"
-    assert ports[0]["type"] == "other"
+    # Unnamed LAG is skipped; duplicate port-config row syncs without state type.
+    assert "type" not in ports[0]
 
 
 def test_ports_to_entities_skips_lag_members_without_port_rows(stub_sdk):
@@ -1475,8 +1540,8 @@ def test_radios_to_entities_leaves_unverified_rf_codes_unset(stub_sdk):
     assert "rf_channel_width" not in radio
 
 
-def test_radios_to_entities_defaults_type_other_when_radio_mode_missing(stub_sdk):
-    """Config-only radios still need Interface.type; omit RF and WLAN links."""
+def test_radios_to_entities_omits_type_when_wireless_state_missing(stub_sdk):
+    """Config-only radios omit type (and RF/WLAN links) so state degrade is safe."""
     tables = _wireless_tables(
         interface_id="radio-1",
         ssid_configs=[
@@ -1488,11 +1553,33 @@ def test_radios_to_entities_defaults_type_other_when_radio_mode_missing(stub_sdk
     )
     entities = transform.radios_to_entities(tables, device_names={"cs-ap-1": "ap-lobby"})
     radio = next(e._kw["interface"]._kw for e in entities if "interface" in e._kw)
-    assert radio["type"] == "other"
+    assert "type" not in radio
     assert "rf_role" not in radio
     assert "tx_power" not in radio
     assert "wireless_lans" not in radio
     assert radio["device"]._kw["name"] == "ap-lobby"
+
+
+def test_radios_to_entities_defaults_type_other_when_state_lacks_radio_mode(stub_sdk):
+    """A state row without radio_mode still needs a type; RF/WLAN stay gated off."""
+    tables = _wireless_tables(
+        interface_id="radio-1",
+        state={"band": "5GHz", "channel": 36},
+        ssid_configs=[
+            {"asset_device_id": "cs-ap-1", "name": "Corp", "enabled": True, "if_names": "wifi0"},
+        ],
+        ssid_states=[
+            {"asset_device_id": "cs-ap-1", "name": "Corp", "encryption": "PSK", "if_names": "wifi0"},
+        ],
+    )
+    radio = next(
+        e._kw["interface"]._kw
+        for e in transform.radios_to_entities(tables, device_names={"cs-ap-1": "ap-lobby"})
+        if "interface" in e._kw
+    )
+    assert radio["type"] == "other"
+    assert "rf_role" not in radio
+    assert "wireless_lans" not in radio
 
 
 def test_radios_to_entities_enriches_nested_device_ref(stub_sdk):
@@ -1589,6 +1676,41 @@ def test_radios_to_entities_defaults_wlan_status_active_when_enabled_unknown(stu
     assert wlan["status"] == "active"
     assert wlan["auth_type"] == "open"
     assert wlan["auth_cipher"] == "auto"
+
+
+def test_radios_to_entities_merges_ssid_enabled_across_aps(stub_sdk, caplog):
+    """Same SSID on two APs: enabled is OR'd; conflicting encryption keeps first."""
+    tables = {
+        "cs-ap-1": {
+            "wireless_interfaces": [],
+            "wireless_states": [],
+            "ssid_configs": [
+                {"asset_device_id": "cs-ap-1", "name": "Guest", "enabled": False, "if_names": "wifi0"}
+            ],
+            "ssid_states": [
+                {"asset_device_id": "cs-ap-1", "name": "Guest", "encryption": "OPEN", "if_names": "wifi0"}
+            ],
+        },
+        "cs-ap-2": {
+            "wireless_interfaces": [],
+            "wireless_states": [],
+            "ssid_configs": [
+                {"asset_device_id": "cs-ap-2", "name": "Guest", "enabled": True, "if_names": "wifi0"}
+            ],
+            "ssid_states": [
+                {"asset_device_id": "cs-ap-2", "name": "Guest", "encryption": "PSK", "if_names": "wifi0"}
+            ],
+        },
+    }
+    wlan = (
+        transform.radios_to_entities(tables, device_names={"cs-ap-1": "ap-1", "cs-ap-2": "ap-2"})[0]
+        ._kw["wireless_lan"]
+        ._kw
+    )
+    assert wlan["ssid"] == "Guest"
+    assert wlan["status"] == "active"
+    assert wlan["auth_type"] == "open"
+    assert "Conflicting encryption for SSID" in caplog.text
 
 
 def test_ports_to_entities_accepts_string_mask_length(stub_sdk):

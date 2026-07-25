@@ -60,6 +60,10 @@ def virtual_chassis_to_entities(
     Returns (VC entities, {cs_device_id: {"name", "position", "cluster_id"?}})
     for `devices_to_entities` to attach `virtual_chassis` / `vc_position`.
     device_one is the primary/master per the InferredCluster schema.
+
+    Devices absent from the membership map do not get a ``virtual_chassis``
+    assertion. Diode upsert cannot clear a prior link, so a device that left
+    a cluster may keep a stale NetBox VirtualChassis until edited manually.
     """
     entities: list[Entity] = []
     memberships: dict[str, dict] = {}
