@@ -57,14 +57,13 @@ def test_truncate_error_body_collapses_and_limits_length():
         ("asset-device", "AssetDevice"),
         ("asset-port-state", "AssetPortState"),
         ("asset-interface-vlan-properties", "AssetInterfaceVlanProperties"),
-        ("asset-vlan-config", "AssetVlanConfig"),
         ("inferred-cluster", "InferredCluster"),
         ("inferred-device", "InferredDevice"),
-        ("asset-lldp-neighbor-state", "AssetLldpNeighborState"),
-        ("asset-l2-vsn-suni-config", "AssetL2VsnSuniConfig"),
+        ("asset-wireless-interface-state", "AssetWirelessInterfaceState"),
     ],
 )
 def test_configstate_response_key_matches_the_spec_schema_names(table, key):
+    """PascalCase unwrap keys for tables this worker actually retrieves."""
     assert configstate_response_key(table) == key
 
 

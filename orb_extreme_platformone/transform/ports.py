@@ -383,22 +383,21 @@ def _port_kwargs(
     )
 
     # Link state maps to mark_connected, never to `enabled` -- admin state is
-    # asserted separately above.
-    oper_state = state.get("oper_state")
+    # asserted separately above. Coerce ints so string JSON codes still map.
+    oper_state = _coerce_int(state.get("oper_state"))
     if oper_state is not None:
         kwargs["mark_connected"] = oper_state == OPER_STATE_UP
 
-    speed = VERIFIED_OPER_SPEED_KBPS.get(state.get("oper_speed"))
+    oper_speed = _coerce_int(state.get("oper_speed"))
+    connector_type = _coerce_int(state.get("connector_type"))
+    speed = VERIFIED_OPER_SPEED_KBPS.get(oper_speed) if oper_speed is not None else None
     if speed is not None:
         kwargs["speed"] = speed
     duplex = _duplex(state, config)
     if duplex is not None:
         kwargs["duplex"] = duplex
     # NetBox requires type; verified speed+connector wins, else ``other``.
-    kwargs["type"] = (
-        _TYPE_BY_SPEED_AND_CONNECTOR.get((state.get("oper_speed"), state.get("connector_type")))
-        or DEFAULT_INTERFACE_TYPE
-    )
+    kwargs["type"] = _TYPE_BY_SPEED_AND_CONNECTOR.get((oper_speed, connector_type)) or DEFAULT_INTERFACE_TYPE
 
     if config.get("description"):
         kwargs["description"] = config["description"]

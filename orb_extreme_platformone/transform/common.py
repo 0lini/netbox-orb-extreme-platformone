@@ -92,7 +92,12 @@ def _interface_identity_kwargs(
     interface_id: str | None = None,
     enabled=None,
 ) -> dict:
-    """Shared device/name/tags/custom_fields/enabled base for Interface entities."""
+    """Shared device/name/tags/custom_fields/enabled base for Interface entities.
+
+    Always asserts ``enabled``: Diode/protobuf maps an omitted bool to false, so
+    leaving it unset would invent admin-down. Unknown/missing → admin-up
+    (same posture as LAG parents when Platform ONE omits a usable signal).
+    """
     kwargs: dict = {
         "device": device,
         "name": name,
@@ -102,8 +107,7 @@ def _interface_identity_kwargs(
     if custom_fields:
         kwargs["custom_fields"] = custom_fields
     coerced = _coerce_bool(enabled)
-    if coerced is not None:
-        kwargs["enabled"] = coerced
+    kwargs["enabled"] = True if coerced is None else coerced
     return kwargs
 
 

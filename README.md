@@ -43,7 +43,7 @@ Platform ONE (Assets + ConfigState)
 | Interface IP addresses (ConfigState) | `IPAddress` — address + `mask_length`, `status` `active`, assigned to the matching interface (bare addresses without a prefix are skipped; SVI/orphan IPs also emit a minimal Interface named from vlan/port/LAG rows) |
 | Link aggregation (ConfigState) | `Interface` — LAG parent (`type=lag`, name, admin `enabled` from duplicate port-config or default up, VLAN trunk/access, `poe_mode`/`poe_type` when joined, optional description/MAC from duplicate port rows, interface CFs); member ports use the same physical-port fields plus Diode `Interface.lag` |
 | Inferred clusters (ConfigState) | `VirtualChassis` — name from peer names, master = primary member (`device_one`), member `vc_position`, provenance tags, `platformone_cluster_id` custom field |
-| AP radios (ConfigState) | `Interface` — radio name, admin `enabled`, `type` (`ieee802.11*` when known including `ieee802.11be`; else `other` without RF fields), `rf_role=ap` + `tx_power` / channel fields only on wireless types, `primary_mac_address` (BSSID, uppercase), linked `wireless_lans`, interface CFs |
+| AP radios (ConfigState) | `Interface` — radio name, admin `enabled`, `type` (`ieee802.11*` when known including `ieee802.11be`; else `other` without RF/`wireless_lans`), `rf_role=ap` + `tx_power` / channel / `wireless_lans` only on wireless types, `primary_mac_address` (BSSID, uppercase), interface CFs |
 | SSIDs / WLANs (ConfigState) | `WirelessLAN` — `ssid`, `status` (`active`/`disabled`; unknown → `active`), `auth_type` / `auth_cipher` (unknown → `open` / `auto`, Meraki-style); deduped by SSID across APs (not site-scoped) |
 
 The worker asserts a **fixed field set**: each field is either always
@@ -178,10 +178,11 @@ Policy `config:` keys (see `agent.yaml` for a complete example):
 |-----|-------------|---------|
 | `BOOTSTRAP` | Run schema setup before the sync (first run only). | `false` |
 | `classification` | Assets device filter: `ALL`, `SWITCH`, `WIRELESS`, `ROUTER`, …. Port sync only runs for switch-OS devices regardless. | `ALL` |
-| `scope.sites` | Restrict the sync to specific resolved sites; `["*"]` for all. | `["*"]` |
+| `scope.sites` | Restrict the sync to specific resolved sites (case-insensitive); `["*"]` for all. | `["*"]` |
 
 Every credential key can be provided in the policy `config:` or as a
-same-named environment variable; policy config takes precedence.
+same-named environment variable; policy config takes precedence when the key
+is set (including an empty string).
 
 ### Authentication
 
@@ -293,7 +294,7 @@ Aligned with Cisco Meraki SSID mapping:
 | SSID `enabled` true / unknown | `status` `active` |
 | SSID `enabled` false | `status` `disabled` |
 | `encryption` open / unknown | `auth_type` `open`, `auth_cipher` `auto` |
-| `encryption` PSK / WPA-personal family | `auth_type` `wpa-personal`, cipher `aes` when WPA2+ |
+| `encryption` PSK / WPA / WPA-personal family | `auth_type` `wpa-personal`; cipher `tkip` for bare WPA, `aes` when WPA2+ |
 | `encryption` 802.1X / enterprise family | `auth_type` `wpa-enterprise` |
 | `encryption` WEP | `auth_type` `wep`, `auth_cipher` `wep` |
 
@@ -412,7 +413,8 @@ transformed from ConfigState tables joined on `asset_interface_id`
 (capabilities join on `(asset_device_id, port_name)`):
 
 - **Admin state and link state are independent fields.** `enabled` reflects
-  real administrative state (`AssetPortConfig.enabled`); link state is
+  real administrative state (`AssetPortConfig.enabled` when present;
+  otherwise admin-up — Diode maps an omitted bool to false). Link state is
   asserted separately as `mark_connected` (`AssetPortState.oper_state`,
   IF-MIB-style 1 = up), so an admin-down port and a link-down port are
   distinguishable in NetBox.

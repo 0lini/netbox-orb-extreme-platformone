@@ -9,6 +9,8 @@ nested `AssetInterfaceVlanMap` rows), `AssetLagConfig` /
 
 from __future__ import annotations
 
+import pytest
+
 from orb_extreme_platformone import transform
 from orb_extreme_platformone.backend import INTERFACE_ID_TABLES, PORT_TABLES, WIRELESS_TABLES
 from tests.conftest import PORT_CONFIG, PORT_STATE, SWITCH_ASSET, VLAN_PROPERTIES, cf
@@ -20,6 +22,54 @@ def _record(asset=SWITCH_ASSET, location=None, cs_device_id="cs-uuid-42", cs_dev
         "cs_device_id": cs_device_id,
         "cs_device": cs_device,
         "location": location,
+    }
+
+
+def _tables(**overrides):
+    tables = {
+        "port_configs": [PORT_CONFIG],
+        "port_states": [PORT_STATE],
+        "vlan_properties": [VLAN_PROPERTIES],
+    }
+    tables.update(overrides)
+    return tables
+
+
+def _wireless_tables(
+    *,
+    device_id: str = "cs-ap-1",
+    interface_id: str = "radio-uuid-1",
+    name: str = "wifi0",
+    enabled=True,
+    state: dict | None = None,
+    ssid_configs: list | None = None,
+    ssid_states: list | None = None,
+):
+    """Minimal AP wireless table bucket for radios_to_entities tests."""
+    config = {
+        "asset_device_id": device_id,
+        "asset_interface_id": interface_id,
+        "name": name,
+    }
+    if enabled is not None:
+        config["enabled"] = enabled
+    states = []
+    if state is not None:
+        states.append(
+            {
+                "asset_device_id": device_id,
+                "asset_interface_id": interface_id,
+                "name": name,
+                **state,
+            }
+        )
+    return {
+        device_id: {
+            "wireless_interfaces": [config],
+            "wireless_states": states,
+            "ssid_configs": ssid_configs or [],
+            "ssid_states": ssid_states or [],
+        }
     }
 
 
@@ -207,9 +257,7 @@ def test_devices_to_entities_ignores_configstate_model_and_firmware(stub_sdk):
     device = entities[-1]._kw["device"]._kw
     assert "device_type" not in device
     # OS family alone may still form a platform; CS firmware must not appear.
-    platform = device.get("platform")
-    if platform is not None:
-        assert "8.10.1.0" not in platform._kw["name"]
+    assert device["platform"]._kw["name"] == "Fabric Engine"
 
 
 def test_devices_to_entities_non_switch_function_platform_is_version_only(stub_sdk):
@@ -226,15 +274,9 @@ def test_devices_to_entities_without_function_or_version_asserts_no_platform(stu
     assert "platform" not in entities[-1]._kw["device"]._kw
 
 
-def test_devices_to_entities_without_function_asserts_no_role(stub_sdk):
-    asset = {**SWITCH_ASSET, "function": None}
-    entities = transform.devices_to_entities([_record(asset=asset)])
-
-    assert "role" not in entities[-1]._kw["device"]._kw
-
-
-def test_devices_to_entities_unknown_function_asserts_no_role(stub_sdk):
-    asset = {**SWITCH_ASSET, "function": "Unknown"}
+@pytest.mark.parametrize("function", [None, "Unknown", "   "])
+def test_devices_to_entities_omits_role_for_empty_or_unknown_function(stub_sdk, function):
+    asset = {**SWITCH_ASSET, "function": function}
     entities = transform.devices_to_entities([_record(asset=asset)])
 
     assert "role" not in entities[-1]._kw["device"]._kw
@@ -274,19 +316,14 @@ def test_scope_devices_filters_on_the_resolved_site():
     assert scoped == [in_scope]
 
 
+def test_scope_devices_matches_site_names_case_insensitively():
+    in_scope = _record(location={"site_name": "HQ"})
+    assert transform.scope_devices([in_scope], site_scope={"hq"}) == [in_scope]
+
+
 def test_scope_devices_without_a_scope_returns_everything():
     records = [_record(), _record(location={"site_name": "HQ"})]
     assert transform.scope_devices(records, site_scope=None) == records
-
-
-def _tables(**overrides):
-    tables = {
-        "port_configs": [PORT_CONFIG],
-        "port_states": [PORT_STATE],
-        "vlan_properties": [VLAN_PROPERTIES],
-    }
-    tables.update(overrides)
-    return tables
 
 
 def test_ports_to_entities_warns_on_duplicate_first_row_join(stub_sdk, caplog):
@@ -333,6 +370,11 @@ def test_ports_to_entities_config_only_port_still_syncs_admin_state(stub_sdk):
 
 
 def test_ports_to_entities_state_only_port_still_syncs_link_state(stub_sdk):
+    """No port-config row: link state still maps; enabled defaults admin-up.
+
+    Diode maps an omitted bool to false, so leaving enabled unset would invent
+    admin-down (same reason LAG parents always assert an explicit bool).
+    """
     down = {**PORT_STATE, "oper_state": 2}
     entities = transform.ports_to_entities(
         _tables(port_configs=[], port_states=[down], vlan_properties=[]), device="sw-idf1"
@@ -340,7 +382,7 @@ def test_ports_to_entities_state_only_port_still_syncs_link_state(stub_sdk):
 
     port = entities[0]._kw["interface"]._kw
     assert port["mark_connected"] is False
-    assert "enabled" not in port
+    assert port["enabled"] is True
 
 
 def test_ports_to_entities_admin_down_and_link_down_are_independent(stub_sdk):
@@ -373,6 +415,26 @@ def test_ports_to_entities_fiber_gig_port_maps_to_sfp_type(stub_sdk):
     entities = transform.ports_to_entities(_tables(port_states=[state], vlan_properties=[]), device="sw-idf1")
 
     assert entities[0]._kw["interface"]._kw["type"] == "1000base-x-sfp"
+
+
+def test_ports_to_entities_accepts_string_oper_enum_codes(stub_sdk):
+    """JSON string codes must still map speed/type/link (same as mask_length)."""
+    state = {
+        **PORT_STATE,
+        "oper_state": "1",
+        "oper_speed": "4",
+        "connector_type": "1",
+        "oper_duplex": "2",
+    }
+    port = (
+        transform.ports_to_entities(_tables(port_states=[state], vlan_properties=[]), device="sw-idf1")[0]
+        ._kw["interface"]
+        ._kw
+    )
+    assert port["mark_connected"] is True
+    assert port["speed"] == 1_000_000
+    assert port["type"] == "1000base-t"
+    assert port["duplex"] == "full"
 
 
 def test_ports_to_entities_maps_mgmt_only_from_capabilities(stub_sdk):
@@ -612,12 +674,10 @@ def test_ports_to_entities_rewrites_colon_ports_to_native_notation(stub_sdk):
         function="Fabric Engine",
     )
 
-    lag = entities[0]._kw["interface"]._kw
-    port = entities[1]._kw["interface"]._kw
-    assert lag["name"] == "lag 1"
-    assert port["name"] == "1/52"
-    assert port["mgmt_only"] is True
-    assert port["lag"]._kw["name"] == "lag 1"
+    by_name = {e._kw["interface"]._kw["name"]: e._kw["interface"]._kw for e in entities}
+    assert set(by_name) == {"lag 1", "1/52"}
+    assert by_name["1/52"]["mgmt_only"] is True
+    assert by_name["1/52"]["lag"]._kw["name"] == "lag 1"
     # Caller rows stay untouched (tables are copied, not mutated).
     assert config["name"] == "1:52"
 
@@ -690,6 +750,7 @@ def test_ports_to_entities_emits_svi_ips_via_vlan_interface_name(stub_sdk):
     svi = next(i for i in iface_entities if i["name"] == "vlan10")
     assert svi["device"]._kw["name"] == "sw-idf1"
     assert svi["type"] == "virtual"
+    assert svi["enabled"] is True
     assert cf(svi["custom_fields"]["platformone_interface_id"]._kw) == "if-svi"
 
     ip_entities = [e._kw["ip_address"]._kw for e in entities if "ip_address" in e._kw]
@@ -737,11 +798,13 @@ def test_ports_to_entities_untagged_only_is_access_mode(stub_sdk):
     assert "tagged_vlans" not in port
 
 
-def test_ports_to_entities_no_vlan_rows_asserts_no_mode():
+def test_ports_to_entities_omits_mode_when_no_vlan_rows(stub_sdk):
     """FLEX-UNI/Fabric-Attach ports can be mapped to an I-SID instead of a
     VLAN -- inventing an access mode would misrepresent them."""
-    fields = transform.ports._vlan_fields([])
-    assert fields == {}
+    port = transform.ports_to_entities(_tables(vlan_properties=[]), device="sw-idf1")[0]._kw["interface"]._kw
+    assert "mode" not in port
+    assert "untagged_vlan" not in port
+    assert "tagged_vlans" not in port
 
 
 def test_ports_to_entities_omits_reserved_untagged_vlan(stub_sdk):
@@ -777,14 +840,19 @@ def test_ports_to_entities_strips_reserved_tagged_vids(stub_sdk):
     assert port["mode"] == "tagged"
 
 
-def test_ports_to_entities_only_reserved_vlan_asserts_no_vlan_or_mode():
+def test_ports_to_entities_omits_vlan_and_mode_when_only_reserved(stub_sdk):
     """A port whose only membership is reserved VID 4094 gets no VLAN/mode."""
     vlan = {
         **VLAN_PROPERTIES,
         "port_vlan": 4094,
         "vlans": [{"vlan_number": 4094}],
     }
-    assert transform.ports._vlan_fields([vlan]) == {}
+    port = (
+        transform.ports_to_entities(_tables(vlan_properties=[vlan]), device="sw-idf1")[0]._kw["interface"]._kw
+    )
+    assert "mode" not in port
+    assert "untagged_vlan" not in port
+    assert "tagged_vlans" not in port
 
 
 def test_ports_to_entities_ports_join_on_interface_id_not_row_order(stub_sdk):
@@ -1306,6 +1374,8 @@ def test_virtual_chassis_warns_on_duplicate_computed_names(stub_sdk, caplog):
 
 
 def test_devices_to_entities_attaches_virtual_chassis_membership(stub_sdk):
+    """Membership Devices before VirtualChassis.master — NetBox rejects a
+    master that is not yet assigned to the chassis on fresh create."""
     peer = _record(asset=SWITCH_ASSET_PEER, cs_device_id="cs-uuid-43")
     vc_entities, memberships = transform.virtual_chassis_to_entities(
         [INFERRED_CLUSTER],
@@ -1318,8 +1388,6 @@ def test_devices_to_entities_attaches_virtual_chassis_membership(stub_sdk):
         vc_memberships=memberships,
     )
 
-    # Membership Devices before VirtualChassis.master — NetBox rejects a
-    # master that is not yet assigned to the chassis on fresh create.
     kinds = [next(iter(e._kw)) for e in entities]
     assert kinds == ["site", "device", "device", "virtual_chassis"]
     devices = {e._kw["device"]._kw["name"]: e._kw["device"]._kw for e in entities if "device" in e._kw}
@@ -1335,92 +1403,26 @@ def test_devices_to_entities_attaches_virtual_chassis_membership(stub_sdk):
     assert master["device_type"]._kw["model"] == "5320-48P-8XE-FabricEngine"
 
 
-def test_devices_to_entities_emits_vc_master_after_member_devices(stub_sdk):
-    """Regression: master-before-membership race on first Diode ingest."""
-    peer = _record(asset=SWITCH_ASSET_PEER, cs_device_id="cs-uuid-43")
-    vc_entities, memberships = transform.virtual_chassis_to_entities(
-        [INFERRED_CLUSTER],
-        records_by_cs_id={"cs-uuid-42": _record(), "cs-uuid-43": peer},
-    )
-    entities = transform.devices_to_entities(
-        [_record(), peer],
-        virtual_chassis_entities=vc_entities,
-        vc_memberships=memberships,
-    )
-    kinds = [next(iter(e._kw)) for e in entities]
-    first_device = kinds.index("device")
-    first_vc = kinds.index("virtual_chassis")
-    assert first_device < first_vc
-    assert all(k != "virtual_chassis" for k in kinds[:first_device])
-    member_devices = [e._kw["device"]._kw for e in entities if "device" in e._kw]
-    assert all("virtual_chassis" in d and "vc_position" in d for d in member_devices)
-    assert entities[first_vc]._kw["virtual_chassis"]._kw["master"]._kw["name"] == "sw-idf1"
-
-
-AP_ASSET = {
-    "device_id": 99,
-    "host_name": "ap-lobby",
-    "serial_number": "AP99",
-    "mac_address": "aabbccddee99",
-    "product_type": "AP5050",
-    "function": "AP",
-    "os_version": "10.7.0",
-    "is_connected": True,
-    "ip_address": "10.0.0.99",
-    "site_name": "Assets-Site",
-}
-
-
 def test_radios_to_entities_maps_native_rf_fields_and_wlans(stub_sdk):
-    tables = {
-        "cs-ap-1": {
-            "wireless_interfaces": [
-                {
-                    "asset_device_id": "cs-ap-1",
-                    "asset_interface_id": "radio-uuid-1",
-                    "name": "wifi0",
-                    "enabled": True,
-                }
-            ],
-            "wireless_states": [
-                {
-                    "asset_device_id": "cs-ap-1",
-                    "asset_interface_id": "radio-uuid-1",
-                    "name": "wifi0",
-                    "band": "5GHz",
-                    "channel": 36,
-                    "channel_width": 80,
-                    "bssid": "aa:bb:cc:dd:ee:01",
-                    "power": 18,
-                    "radio_mode": "_11ax_5g",
-                    "ssid_name": "Corp",
-                }
-            ],
-            "ssid_configs": [
-                {
-                    "asset_device_id": "cs-ap-1",
-                    "name": "Corp",
-                    "enabled": True,
-                    "if_names": "wifi0",
-                },
-                {
-                    "asset_device_id": "cs-ap-1",
-                    "name": "Guest",
-                    "enabled": False,
-                    "if_names": "wifi0",
-                },
-            ],
-            "ssid_states": [
-                {"asset_device_id": "cs-ap-1", "name": "Corp", "encryption": "PSK", "if_names": "wifi0"},
-                {
-                    "asset_device_id": "cs-ap-1",
-                    "name": "Guest",
-                    "encryption": "OPEN",
-                    "if_names": "wifi0",
-                },
-            ],
-        }
-    }
+    tables = _wireless_tables(
+        state={
+            "band": "5GHz",
+            "channel": 36,
+            "channel_width": 80,
+            "bssid": "aa:bb:cc:dd:ee:01",
+            "power": 18,
+            "radio_mode": "_11ax_5g",
+            "ssid_name": "Corp",
+        },
+        ssid_configs=[
+            {"asset_device_id": "cs-ap-1", "name": "Corp", "enabled": True, "if_names": "wifi0"},
+            {"asset_device_id": "cs-ap-1", "name": "Guest", "enabled": False, "if_names": "wifi0"},
+        ],
+        ssid_states=[
+            {"asset_device_id": "cs-ap-1", "name": "Corp", "encryption": "PSK", "if_names": "wifi0"},
+            {"asset_device_id": "cs-ap-1", "name": "Guest", "encryption": "OPEN", "if_names": "wifi0"},
+        ],
+    )
 
     entities = transform.radios_to_entities(tables, device_names={"cs-ap-1": "ap-lobby"})
 
@@ -1451,35 +1453,19 @@ def test_radios_to_entities_maps_native_rf_fields_and_wlans(stub_sdk):
 
 
 def test_radios_to_entities_leaves_unverified_rf_codes_unset(stub_sdk):
-    tables = {
-        "cs-ap-1": {
-            "wireless_interfaces": [
-                {
-                    "asset_device_id": "cs-ap-1",
-                    "asset_interface_id": "radio-uuid-2",
-                    "name": "wifi1",
-                    "enabled": True,
-                }
-            ],
-            "wireless_states": [
-                {
-                    "asset_device_id": "cs-ap-1",
-                    "asset_interface_id": "radio-uuid-2",
-                    "name": "wifi1",
-                    "band": "mystery",
-                    "channel": 1,
-                    "channel_width": 7,
-                    "radio_mode": "_11be_6g",
-                    "power": 10,
-                }
-            ],
-            "ssid_configs": [],
-            "ssid_states": [],
-        }
-    }
+    tables = _wireless_tables(
+        interface_id="radio-uuid-2",
+        name="wifi1",
+        state={
+            "band": "mystery",
+            "channel": 1,
+            "channel_width": 7,
+            "radio_mode": "_11be_6g",
+            "power": 10,
+        },
+    )
 
-    entities = transform.radios_to_entities(tables, device_names={"cs-ap-1": "ap-lobby"})
-    radio = entities[0]._kw["interface"]._kw
+    radio = transform.radios_to_entities(tables, device_names={"cs-ap-1": "ap-lobby"})[0]._kw["interface"]._kw
     # NetBox 4.6 accepts ieee802.11be; RF fields require a wireless type.
     assert radio["type"] == "ieee802.11be"
     assert radio["rf_role"] == "ap"
@@ -1490,52 +1476,27 @@ def test_radios_to_entities_leaves_unverified_rf_codes_unset(stub_sdk):
 
 
 def test_radios_to_entities_defaults_type_other_when_radio_mode_missing(stub_sdk):
-    """Config-only radios still need Interface.type; omit RF fields on type=other."""
-    tables = {
-        "cs-ap-1": {
-            "wireless_interfaces": [
-                {
-                    "asset_device_id": "cs-ap-1",
-                    "asset_interface_id": "radio-1",
-                    "name": "wifi0",
-                    "enabled": True,
-                }
-            ],
-            "wireless_states": [],
-            "ssid_configs": [],
-            "ssid_states": [],
-        }
-    }
-    radio = transform.radios_to_entities(tables, device_names={"cs-ap-1": "ap-lobby"})[0]._kw["interface"]._kw
+    """Config-only radios still need Interface.type; omit RF and WLAN links."""
+    tables = _wireless_tables(
+        interface_id="radio-1",
+        ssid_configs=[
+            {"asset_device_id": "cs-ap-1", "name": "Corp", "enabled": True, "if_names": "wifi0"},
+        ],
+        ssid_states=[
+            {"asset_device_id": "cs-ap-1", "name": "Corp", "encryption": "PSK", "if_names": "wifi0"},
+        ],
+    )
+    entities = transform.radios_to_entities(tables, device_names={"cs-ap-1": "ap-lobby"})
+    radio = next(e._kw["interface"]._kw for e in entities if "interface" in e._kw)
     assert radio["type"] == "other"
     assert "rf_role" not in radio
     assert "tx_power" not in radio
+    assert "wireless_lans" not in radio
     assert radio["device"]._kw["name"] == "ap-lobby"
 
 
 def test_radios_to_entities_enriches_nested_device_ref(stub_sdk):
-    tables = {
-        "cs-ap-1": {
-            "wireless_interfaces": [
-                {
-                    "asset_device_id": "cs-ap-1",
-                    "asset_interface_id": "radio-1",
-                    "name": "wifi0",
-                    "enabled": True,
-                }
-            ],
-            "wireless_states": [
-                {
-                    "asset_device_id": "cs-ap-1",
-                    "asset_interface_id": "radio-1",
-                    "name": "wifi0",
-                    "radio_mode": "_11ax_5g",
-                }
-            ],
-            "ssid_configs": [],
-            "ssid_states": [],
-        }
-    }
+    tables = _wireless_tables(interface_id="radio-1", state={"radio_mode": "_11ax_5g"})
     radio = (
         transform.radios_to_entities(
             tables,
@@ -1559,80 +1520,56 @@ def test_radios_to_entities_enriches_nested_device_ref(stub_sdk):
 
 
 def test_radios_to_entities_skips_devices_missing_from_device_names(stub_sdk):
-    tables = {
-        "cs-ap-1": {
-            "wireless_interfaces": [
-                {"asset_device_id": "cs-ap-1", "asset_interface_id": "r1", "name": "wifi0"}
-            ],
-            "wireless_states": [],
-            "ssid_configs": [],
-            "ssid_states": [],
-        }
-    }
+    tables = _wireless_tables(interface_id="r1", enabled=None)
     assert transform.radios_to_entities(tables, device_names={}) == []
 
 
-def test_radios_to_entities_accepts_band_enum_style_labels(stub_sdk):
+@pytest.mark.parametrize(
+    ("band", "channel", "radio_mode", "expected_mhz"),
+    [
+        ("BAND_5_GHZ", 36, "_11ax_5g", 5180.0),
+        ("BAND_2_4_GHZ", 1, "_11ax_2g", 2412.0),
+    ],
+)
+def test_radios_to_entities_accepts_band_enum_style_labels(stub_sdk, band, channel, radio_mode, expected_mhz):
+    tables = _wireless_tables(
+        state={"band": band, "channel": channel, "channel_width": 20, "radio_mode": radio_mode},
+    )
+    radio = transform.radios_to_entities(tables, device_names={"cs-ap-1": "ap-lobby"})[0]._kw["interface"]._kw
+    assert radio["rf_channel_frequency"] == expected_mhz
+
+
+@pytest.mark.parametrize(
+    ("encryption", "auth_type", "auth_cipher"),
+    [
+        ("OPEN", "open", "auto"),
+        ("PSK", "wpa-personal", "auto"),
+        ("WPA-PSK", "wpa-personal", "auto"),
+        ("WPA", "wpa-personal", "tkip"),
+        ("TYPE_WPA", "wpa-personal", "tkip"),
+        ("WPA2-PSK", "wpa-personal", "aes"),
+        ("TYPE_802DOT1X", "wpa-enterprise", "auto"),
+        ("WEP", "wep", "wep"),
+        (None, "open", "auto"),
+    ],
+)
+def test_radios_to_entities_maps_ssid_encryption_to_auth(stub_sdk, encryption, auth_type, auth_cipher):
+    ssid_state = {"asset_device_id": "cs-ap-1", "name": "Corp", "if_names": "wifi0"}
+    if encryption is not None:
+        ssid_state["encryption"] = encryption
     tables = {
         "cs-ap-1": {
-            "wireless_interfaces": [
-                {
-                    "asset_device_id": "cs-ap-1",
-                    "asset_interface_id": "radio-uuid-3",
-                    "name": "wifi0",
-                    "enabled": True,
-                }
-            ],
-            "wireless_states": [
-                {
-                    "asset_device_id": "cs-ap-1",
-                    "asset_interface_id": "radio-uuid-3",
-                    "name": "wifi0",
-                    "band": "BAND_5_GHZ",
-                    "channel": 36,
-                    "channel_width": 40,
-                    "radio_mode": "_11ax_5g",
-                }
-            ],
-            "ssid_configs": [],
-            "ssid_states": [],
+            "wireless_interfaces": [],
+            "wireless_states": [],
+            "ssid_configs": [{"asset_device_id": "cs-ap-1", "name": "Corp", "enabled": True}],
+            "ssid_states": [ssid_state],
         }
     }
-
-    radio = transform.radios_to_entities(tables, device_names={"cs-ap-1": "ap-lobby"})[0]._kw["interface"]._kw
-    assert radio["rf_channel_frequency"] == 5180.0
-
-
-def test_radios_to_entities_accepts_band_2_4_ghz_enum(stub_sdk):
-    """BAND_2_4_GHZ compactifies to band24ghz; must still map channel 1 → 2412."""
-    tables = {
-        "cs-ap-1": {
-            "wireless_interfaces": [
-                {
-                    "asset_device_id": "cs-ap-1",
-                    "asset_interface_id": "radio-uuid-24",
-                    "name": "wifi1",
-                    "enabled": True,
-                }
-            ],
-            "wireless_states": [
-                {
-                    "asset_device_id": "cs-ap-1",
-                    "asset_interface_id": "radio-uuid-24",
-                    "name": "wifi1",
-                    "band": "BAND_2_4_GHZ",
-                    "channel": 1,
-                    "channel_width": 20,
-                    "radio_mode": "_11ax_2g",
-                }
-            ],
-            "ssid_configs": [],
-            "ssid_states": [],
-        }
-    }
-
-    radio = transform.radios_to_entities(tables, device_names={"cs-ap-1": "ap-lobby"})[0]._kw["interface"]._kw
-    assert radio["rf_channel_frequency"] == 2412.0
+    wlan = (
+        transform.radios_to_entities(tables, device_names={"cs-ap-1": "ap-lobby"})[0]._kw["wireless_lan"]._kw
+    )
+    assert wlan["auth_type"] == auth_type
+    assert wlan["auth_cipher"] == auth_cipher
 
 
 def test_radios_to_entities_defaults_wlan_status_active_when_enabled_unknown(stub_sdk):

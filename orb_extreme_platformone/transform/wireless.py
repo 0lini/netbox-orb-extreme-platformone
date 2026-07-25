@@ -132,6 +132,7 @@ def _auth_from_encryption(encryption: str | None) -> tuple[str, str]:
     """Map AssetSsidState.encryption to NetBox WirelessLAN auth_type + auth_cipher.
 
     Unknown / empty values default to ``open`` / ``auto`` (Cisco Meraki posture).
+    Bare ``WPA`` / ``TYPE_WPA`` count as personal (not open).
     """
     if not encryption or not str(encryption).strip():
         return "open", "auto"
@@ -142,12 +143,14 @@ def _auth_from_encryption(encryption: str | None) -> tuple[str, str]:
         return "wep", "wep"
     if any(token in compact for token in ("8021x", "enterprise", "radius", "eap", "dot1x")):
         auth_type = "wpa-enterprise"
-    elif any(token in compact for token in ("psk", "ppsk", "sae", "personal", "wpa2", "wpa3")):
+    elif any(
+        token in compact for token in ("psk", "ppsk", "sae", "personal", "wpa2", "wpa3", "wpa")
+    ) or compact in {"typewpa", "wpaeap"}:
         auth_type = "wpa-personal"
     else:
         auth_type = "open"
 
-    if "tkip" in compact or compact in {"wpa", "wpaeap"}:
+    if "tkip" in compact or compact in {"wpa", "wpaeap", "typewpa"}:
         auth_cipher = "tkip"
     elif any(token in compact for token in ("wpa2", "wpa3", "aes", "ccmp", "gcmp", "sae")):
         auth_cipher = "aes"
@@ -236,7 +239,8 @@ def _radio_interface_kwargs(
     mac = _normalized_mac(state.get("bssid"))
     if mac:
         kwargs["primary_mac_address"] = mac
-    if ssids:
+    # wireless_lans is only legal on ieee802.11* types (same constraint as rf_role).
+    if ssids and wireless:
         kwargs["wireless_lans"] = ssids
     return kwargs
 

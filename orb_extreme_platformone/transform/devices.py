@@ -128,8 +128,10 @@ def _iter_scoped_devices(records: list[dict], *, site_scope: set[str] | None):
 
     Single resolve_location pass used by both `scope_devices` and
     `devices_to_entities`. Platform ONE assigns every device a site itself, so
-    a record without one is unexpected and skipped (with a warning).
+    a record without one is unexpected and skipped (with a warning). Site
+    matching is case-insensitive (policy ``hq`` matches ConfigState ``HQ``).
     """
+    folded_scope = {site.casefold() for site in site_scope} if site_scope else None
     for record in records:
         site_name, location_path = resolve_location(record.get("location"), record["asset"])
         if site_name is None:
@@ -139,7 +141,7 @@ def _iter_scoped_devices(records: list[dict], *, site_scope: set[str] | None):
                 asset_label(asset),
             )
             continue
-        if site_scope and site_name not in site_scope:
+        if folded_scope and site_name.casefold() not in folded_scope:
             continue
         yield record, site_name, location_path
 

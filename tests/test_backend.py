@@ -643,3 +643,40 @@ def test_bootstrap_true_without_netbox_creds_fails_closed(monkeypatch):
     )
     with pytest.raises(ValueError, match="BOOTSTRAP is enabled"):
         list(Backend().run("platformone_worker", policy))
+
+
+def test_cfg_or_env_prefers_explicit_empty_policy_value(monkeypatch):
+    """Empty policy string wins over environment (None alone falls through)."""
+    from orb_extreme_platformone import backend as backend_mod
+
+    monkeypatch.setenv("PLATFORMONE_API_TOKEN", "from-env")
+
+    class _Cfg:
+        PLATFORMONE_API_TOKEN = ""
+
+    assert backend_mod._cfg_or_env(_Cfg(), "PLATFORMONE_API_TOKEN") == ""
+
+    class _Missing:
+        pass
+
+    assert backend_mod._cfg_or_env(_Missing(), "PLATFORMONE_API_TOKEN") == "from-env"
+
+
+@responses.activate
+def test_run_site_scope_matches_case_insensitively():
+    _mock_assets([SWITCH_ASSET])
+    _mock_cs("asset-device", "AssetDevice", [CS_SWITCH])
+    _mock_cs(
+        "asset-location",
+        "AssetLocation",
+        [{"asset_device_id": "cs-uuid-42", "site_name": "HQ"}],
+    )
+    _mock_port_tables_empty()
+
+    policy = Policy(
+        config=Config(package="orb_extreme_platformone", PLATFORMONE_API_TOKEN="tok"),
+        scope={"sites": ["hq"]},
+    )
+    entities = list(Backend().run("platformone_worker", policy))
+
+    assert [e.device.name for e in entities if e.HasField("device")] == ["sw-idf1"]

@@ -79,8 +79,11 @@ def _cfg(config, key: str, default=None):
 
 
 def _cfg_or_env(config, key: str, *, default=None):
-    """Policy config wins; falls back to the same-named environment variable."""
-    return _cfg(config, key, None) or os.environ.get(key, default)
+    """Policy config wins when set (including empty string); else environment."""
+    value = _cfg(config, key, None)
+    if value is not None:
+        return value
+    return os.environ.get(key, default)
 
 
 def _scope_sites(scope) -> list[str] | None:
@@ -101,7 +104,7 @@ def _scope_sites(scope) -> list[str] | None:
     if not isinstance(sites, (list, tuple, set)):
         logger.warning("Ignoring invalid policy scope.sites %r; syncing all sites", sites)
         return None
-    cleaned = [str(site) for site in sites if str(site).strip()]
+    cleaned = [str(site).strip() for site in sites if str(site).strip()]
     return cleaned or None
 
 
