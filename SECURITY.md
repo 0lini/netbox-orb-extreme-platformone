@@ -82,7 +82,8 @@ from free-form policy strings.
 **Do not** commit dry-run JSON, inventory exports, or `.env` files. Dry-run
 output can contain hostnames, serials, MACs, and management IPs.
 
-Policy config currently wins over environment when both are set
+Policy config currently wins over environment when the key is set (including
+an empty string); only a missing key falls through to the environment
 (`_cfg_or_env`). Prefer leaving secret values out of checked-in YAML and
 supplying them only via the environment so Orb policy objects never carry
 plaintext secrets.
