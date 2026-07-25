@@ -13,6 +13,7 @@ import pytest
 import responses
 
 from orb_extreme_platformone.client import (
+    CONFIGSTATE_FILTER_CHUNK_SIZE,
     DEFAULT_BASE_URL,
     PlatformOneApiError,
     PlatformOneClient,
@@ -145,6 +146,34 @@ def test_retrieve_tolerates_a_null_records_key():
     )
 
     assert list(_client().retrieve("asset-port-config")) == []
+
+
+@responses.activate
+def test_retrieve_chunks_large_filter_id_lists():
+    """Oversized asset_device_id lists are split so gateways do not reject the body."""
+    url = f"{DEFAULT_BASE_URL}/configstate/v1/retrieve-asset-port-state"
+    ids = [f"id-{i}" for i in range(CONFIGSTATE_FILTER_CHUNK_SIZE + 3)]
+    chunk_a = ids[:CONFIGSTATE_FILTER_CHUNK_SIZE]
+    chunk_b = ids[CONFIGSTATE_FILTER_CHUNK_SIZE:]
+    responses.add(
+        responses.POST,
+        url,
+        match=[responses.matchers.json_params_matcher({"asset_device_id": chunk_a})],
+        json={"AssetPortState": [{"name": "a"}], "Pagination": {"total_pages": 1}},
+        status=200,
+    )
+    responses.add(
+        responses.POST,
+        url,
+        match=[responses.matchers.json_params_matcher({"asset_device_id": chunk_b})],
+        json={"AssetPortState": [{"name": "b"}], "Pagination": {"total_pages": 1}},
+        status=200,
+    )
+
+    rows = list(_client().retrieve("asset-port-state", {"asset_device_id": ids}))
+
+    assert [r["name"] for r in rows] == ["a", "b"]
+    assert len(responses.calls) == 2
 
 
 @responses.activate

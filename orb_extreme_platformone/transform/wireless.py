@@ -15,6 +15,7 @@ from .common import (
     _device_ref,
     _interface_identity_kwargs,
     _normalized_mac,
+    logger,
 )
 
 # NetBox requires Interface.type. When radio_mode is missing, match ports /
@@ -217,14 +218,15 @@ def _radio_interface_kwargs(
         enabled=config.get("enabled"),
     )
     # radio_mode exists only on AssetWirelessInterfaceState, not config.
-    # NetBox requires Interface.type. Wireless RF fields (rf_role, tx_power,
-    # channel) are only legal on ieee802.11* types — type=other is rejected.
+    # Assert type only when a state row is present: known mode → ieee802.11*;
+    # unknown/missing mode on a state row → ``other``. Config-only (no state)
+    # omits type so a wireless-state degrade cannot overwrite a prior type.
     radio_type = _radio_type(state.get("radio_mode"))
     if radio_type is not None:
         kwargs["type"] = radio_type
-    else:
+    elif state:
         kwargs["type"] = DEFAULT_RADIO_TYPE
-    wireless = _is_wireless_interface_type(kwargs["type"])
+    wireless = _is_wireless_interface_type(kwargs.get("type"))
     if wireless:
         kwargs["rf_role"] = "ap"
         tx_power = _tx_power(state.get("power"))
@@ -252,11 +254,28 @@ def _ensure_wlan(
     enabled=None,
     encryption=None,
 ) -> dict:
+    """Merge per-AP SSID rows into one global WirelessLAN.
+
+    ``enabled`` is OR'd across APs (SSID active if any AP broadcasts it).
+    Conflicting ``encryption`` values keep the first and warn.
+    """
     entry = wlans.setdefault(ssid, {"enabled": None, "encryption": None})
     if isinstance(enabled, bool):
-        entry["enabled"] = enabled
-    if entry.get("encryption") is None and encryption is not None:
-        entry["encryption"] = encryption
+        if entry["enabled"] is None:
+            entry["enabled"] = enabled
+        else:
+            entry["enabled"] = entry["enabled"] or enabled
+    if encryption is not None:
+        previous = entry.get("encryption")
+        if previous is None:
+            entry["encryption"] = encryption
+        elif previous != encryption:
+            logger.warning(
+                "Conflicting encryption for SSID %r (%r vs %r); keeping the first",
+                ssid,
+                previous,
+                encryption,
+            )
     return entry
 
 
