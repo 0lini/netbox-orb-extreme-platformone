@@ -43,7 +43,7 @@ Platform ONE (Assets + ConfigState)
 | Interface IP addresses (ConfigState) | `IPAddress` — address + `mask_length`, `status` `active`, assigned to the matching interface (bare addresses without a prefix are skipped; SVI/orphan IPs also emit a minimal Interface named from vlan/port/LAG rows) |
 | Link aggregation (ConfigState) | `Interface` — LAG parent (`type=lag`, name, admin `enabled` from duplicate port-config or default up, VLAN trunk/access, `poe_mode`/`poe_type` when joined, optional description/MAC from duplicate port rows, interface CFs); member ports use the same physical-port fields plus Diode `Interface.lag` |
 | Inferred clusters (ConfigState) | `VirtualChassis` — name from peer names, master = primary member (`device_one`), member `vc_position`, provenance tags, `platformone_cluster_id` custom field |
-| AP radios (ConfigState) | `Interface` — radio name, admin `enabled`, `type` (`ieee802.11*` when known including `ieee802.11be`; else `other` without RF fields), `rf_role=ap` + `tx_power` / channel fields only on wireless types, `primary_mac_address` (BSSID, uppercase), linked `wireless_lans`, interface CFs |
+| AP radios (ConfigState) | `Interface` — radio name, admin `enabled`, `type` (`ieee802.11*` when known including `ieee802.11be`; else `other` without RF/`wireless_lans`), `rf_role=ap` + `tx_power` / channel / `wireless_lans` only on wireless types, `primary_mac_address` (BSSID, uppercase), interface CFs |
 | SSIDs / WLANs (ConfigState) | `WirelessLAN` — `ssid`, `status` (`active`/`disabled`; unknown → `active`), `auth_type` / `auth_cipher` (unknown → `open` / `auto`, Meraki-style); deduped by SSID across APs (not site-scoped) |
 
 The worker asserts a **fixed field set**: each field is either always
@@ -86,9 +86,10 @@ username/password login or a static API token):
   default).
 - **ConfigState API** (`POST /configstate/v1/retrieve-*`) — per-device
   configuration and state tables listed in the call phases below. Every
-  filter field accepts a list, so each retrieve covers the whole in-scope
-  device (or interface) set in one batched call rather than one call per
-  device. No undocumented endpoints are used.
+  filter field accepts a list, so each retrieve covers the in-scope device
+  (or interface) set in batched calls rather than one call per device.
+  Oversized ID lists are chunked (200 IDs per request) so large estates stay
+  within gateway body limits. No undocumented endpoints are used.
 
 ### Extract call phases
 
@@ -178,10 +179,11 @@ Policy `config:` keys (see `agent.yaml` for a complete example):
 |-----|-------------|---------|
 | `BOOTSTRAP` | Run schema setup before the sync (first run only). | `false` |
 | `classification` | Assets device filter: `ALL`, `SWITCH`, `WIRELESS`, `ROUTER`, …. Port sync only runs for switch-OS devices regardless. | `ALL` |
-| `scope.sites` | Restrict the sync to specific resolved sites; `["*"]` for all. | `["*"]` |
+| `scope.sites` | Restrict the sync to specific resolved sites (case-insensitive); `["*"]` for all. | `["*"]` |
 
 Every credential key can be provided in the policy `config:` or as a
-same-named environment variable; policy config takes precedence.
+same-named environment variable; policy config takes precedence when the key
+is set (including an empty string).
 
 ### Authentication
 
@@ -293,7 +295,7 @@ Aligned with Cisco Meraki SSID mapping:
 | SSID `enabled` true / unknown | `status` `active` |
 | SSID `enabled` false | `status` `disabled` |
 | `encryption` open / unknown | `auth_type` `open`, `auth_cipher` `auto` |
-| `encryption` PSK / WPA-personal family | `auth_type` `wpa-personal`, cipher `aes` when WPA2+ |
+| `encryption` PSK / WPA / WPA-personal family | `auth_type` `wpa-personal`; cipher `tkip` for bare WPA, `aes` when WPA2+ |
 | `encryption` 802.1X / enterprise family | `auth_type` `wpa-enterprise` |
 | `encryption` WEP | `auth_type` `wep`, `auth_cipher` `wep` |
 
@@ -412,7 +414,8 @@ transformed from ConfigState tables joined on `asset_interface_id`
 (capabilities join on `(asset_device_id, port_name)`):
 
 - **Admin state and link state are independent fields.** `enabled` reflects
-  real administrative state (`AssetPortConfig.enabled`); link state is
+  real administrative state (`AssetPortConfig.enabled` when present;
+  otherwise admin-up — Diode maps an omitted bool to false). Link state is
   asserted separately as `mark_connected` (`AssetPortState.oper_state`,
   IF-MIB-style 1 = up), so an admin-down port and a link-down port are
   distinguishable in NetBox.
@@ -449,10 +452,11 @@ transformed from ConfigState tables joined on `asset_interface_id`
   against production hardware are mapped (`oper_speed 4` = 1 Gbit/s,
   `connector_type 1/2` = copper/fiber → `1000base-t` / `1000base-x-sfp`).
   Unknown speed/connector codes leave speed unset but set Interface `type`
-  to `other` (NetBox requires a non-blank type). **Duplex** uses the
-  verified Platform ONE enum on `oper_duplex` (1 = half, 2 = full);
-  when oper is unset, config `duplex` is the fallback (also 4 = auto).
-  Config-side `speed` remains unverified and is not used. MACs are
+  to `other`. When port-state is absent entirely, `type` is omitted so a
+  state-table degrade cannot overwrite a previously good type with `other`.
+  **Duplex** uses the verified Platform ONE enum on `oper_duplex` (1 = half,
+  2 = full); when oper is unset, config `duplex` is the fallback (also 4 =
+  auto). Config-side `speed` remains unverified and is not used. MACs are
   uppercased (Meraki posture).
 
 ### LAG interfaces and membership
@@ -512,18 +516,21 @@ switch-only). Tables used:
 Each radio becomes a NetBox `Interface` with native RF fields: `rf_role`
 always `"ap"` when `type` is an `ieee802.11*` wireless type, `enabled` from
 wireless-interface config, `type` from `radio_mode` (including
-`ieee802.11be` for Wi‑Fi 7; unknown/missing mode → `other` **without** RF
-fields — NetBox rejects `rf_role` / channel fields on non-wireless types),
-`tx_power` from `power`, `primary_mac_address` from `bssid` (uppercase),
-`rf_channel_frequency` from IEEE channel formulas on `band` + `channel`
-(including string labels such as `BAND_5_GHZ`), and `rf_channel_width` when
-`channel_width` is already a standard MHz value (20/40/80/160/320). NetBox's
-`rf_channel` string is not asserted.
+`ieee802.11be` for Wi‑Fi 7; state present but unknown mode → `other`
+**without** RF / `wireless_lans`; config-only with no state omits `type` so
+a wireless-state degrade cannot invent `other`), `tx_power` from `power`,
+`primary_mac_address` from `bssid` (uppercase), `rf_channel_frequency` from
+IEEE channel formulas on `band` + `channel` (including string labels such as
+`BAND_5_GHZ`), and `rf_channel_width` when `channel_width` is already a
+standard MHz value (20/40/80/160/320). NetBox's `rf_channel` string is not
+asserted.
 
 SSIDs become `WirelessLAN` entities (`ssid`, `status`, `auth_type`,
 `auth_cipher` — see status/auth tables above). They are deduped by SSID name
 across every AP and are **not** site-scoped (same SSID can broadcast in many
-sites). Radios link to WLANs via NetBox's native `wireless_lans` field using
+sites). Across APs, `enabled` is OR'd (active if any AP broadcasts the SSID)
+and conflicting `encryption` values keep the first with a warning. Radios
+link to WLANs via NetBox's native `wireless_lans` field using
 `AssetSsid*.if_names` and any `ssid_name` on wireless interface state.
 
 ### VirtualChassis from inferred clusters
@@ -552,8 +559,11 @@ AssetDevice UUIDs, and transforms each complete in-scope pair to a NetBox
 - **`platformone_cluster_id`** stores the InferredCluster UUID for stable
   correlation; provenance tags match other synced objects.
 - Clusters where either member is missing from the scoped device set are
-  skipped. A failed cluster extract degrades to no VirtualChassis for that
-  tick rather than aborting the sync.
+  skipped. Each cluster member-side filter degrades independently (one-sided
+  failure still keeps the other). A total cluster extract failure degrades to
+  no VirtualChassis updates for that tick rather than aborting the sync.
+  Diode cannot clear `virtual_chassis` when omitted, so a device that leaves
+  a cluster may keep a prior NetBox membership until edited manually.
 
 Not mapped (no sensible Platform ONE source, or intentionally NetBox-owned):
 `description`, `domain`, `comments`, `owner`, Diode `metadata`, Device

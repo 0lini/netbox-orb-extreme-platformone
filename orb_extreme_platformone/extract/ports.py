@@ -7,6 +7,10 @@ from orb_extreme_platformone.client import PlatformOneClient
 from .retrieve import extract_device_table_buckets, retrieve_ok
 from .tables import INTERFACE_ID_TABLES, PORT_TABLES
 
+# Capabilities have no asset_interface_id; derive the rest from PORT_TABLES so
+# a new interface-id-bearing table cannot be forgotten here.
+_INTERFACE_ID_SOURCE_KEYS = tuple(key for key in PORT_TABLES if key != "port_capabilities")
+
 
 def collect_interface_ids(
     tables_by_device: dict[str, dict[str, list[dict]]],
@@ -18,19 +22,9 @@ def collect_interface_ids(
     matter so interface-IP retrieves cover VLAN-facing interfaces that never
     appear in port/LAG/PoE rows.
     """
-    # Keys whose ConfigState rows expose asset_interface_id (see PORT_TABLES).
-    source_keys = (
-        "port_configs",
-        "port_states",
-        "vlan_properties",
-        "lag_configs",
-        "lag_states",
-        "poe_states",
-        "poe_configs",
-    )
     interface_to_device: dict[str, str] = {}
     for device_id, tables in tables_by_device.items():
-        for key in source_keys:
+        for key in _INTERFACE_ID_SOURCE_KEYS:
             for row in tables.get(key) or []:
                 interface_id = str(row.get("asset_interface_id") or "")
                 if interface_id:

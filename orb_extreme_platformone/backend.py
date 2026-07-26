@@ -79,8 +79,11 @@ def _cfg(config, key: str, default=None):
 
 
 def _cfg_or_env(config, key: str, *, default=None):
-    """Policy config wins; falls back to the same-named environment variable."""
-    return _cfg(config, key, None) or os.environ.get(key, default)
+    """Policy config wins when set (including empty string); else environment."""
+    value = _cfg(config, key, None)
+    if value is not None:
+        return value
+    return os.environ.get(key, default)
 
 
 def _scope_sites(scope) -> list[str] | None:
@@ -101,7 +104,7 @@ def _scope_sites(scope) -> list[str] | None:
     if not isinstance(sites, (list, tuple, set)):
         logger.warning("Ignoring invalid policy scope.sites %r; syncing all sites", sites)
         return None
-    cleaned = [str(site) for site in sites if str(site).strip()]
+    cleaned = [str(site).strip() for site in sites if str(site).strip()]
     return cleaned or None
 
 
@@ -249,8 +252,11 @@ class Backend(WorkerBackend):
         try:
             clusters = extract_inferred_clusters(client, device_ids)
         except PlatformOneApiError as exc:
+            # Diode upsert cannot clear virtual_chassis when omitted, so a failed
+            # fetch leaves prior NetBox memberships sticky until a later success.
             logger.warning(
-                "Policy %s: ConfigState inferred-cluster fetch failed, syncing without VirtualChassis: %s",
+                "Policy %s: ConfigState inferred-cluster fetch failed, syncing without "
+                "VirtualChassis updates (prior NetBox memberships may remain): %s",
                 policy_name,
                 exc,
             )
@@ -260,6 +266,16 @@ class Backend(WorkerBackend):
             clusters,
             records_by_cs_id=records_by_cs_id,
         )
+        unclustered = sorted(set(records_by_cs_id) - set(memberships))
+        if unclustered:
+            # Diode has no null-clear for virtual_chassis; devices that left a
+            # cluster keep any prior NetBox membership until edited manually.
+            logger.info(
+                "Policy %s: %d in-scope device(s) have no InferredCluster membership "
+                "this tick; Diode will not clear a prior VirtualChassis link",
+                policy_name,
+                len(unclustered),
+            )
         logger.info(
             "Policy %s: mapped %d VirtualChassis entities from %d InferredCluster rows",
             policy_name,

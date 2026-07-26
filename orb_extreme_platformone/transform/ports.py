@@ -259,13 +259,24 @@ def _vlan_fields(vlan_records: list[dict]) -> dict:
     into an I-SID instead of a VLAN, and inventing an access mode would
     misrepresent configuration. VLAN refs use `vid` plus `name=str(vid)`
     (NetBox requires a name; switch-local names are not site-scoped).
+
+    Conflicting ``port_vlan`` values across rows for the same interface keep
+    the first and warn (same posture as ``_first_row`` join collisions).
     """
     untagged: int | None = None
     mapped: set[int] = set()
     for record in vlan_records:
         port_vlan = _coerce_int(record.get("port_vlan"))
-        if untagged is None and port_vlan is not None and port_vlan > 0:
-            untagged = port_vlan
+        if port_vlan is not None and port_vlan > 0:
+            if untagged is None:
+                untagged = port_vlan
+            elif port_vlan != untagged:
+                logger.warning(
+                    "Conflicting port_vlan values %s and %s on interface %r; keeping the first",
+                    untagged,
+                    port_vlan,
+                    record.get("asset_interface_id") or record.get("interface_name") or "?",
+                )
         for vlan_map in record.get("vlans") or []:
             number = _coerce_int(vlan_map.get("vlan_number")) if isinstance(vlan_map, dict) else None
             if number is not None and number > 0:
@@ -383,22 +394,27 @@ def _port_kwargs(
     )
 
     # Link state maps to mark_connected, never to `enabled` -- admin state is
-    # asserted separately above.
-    oper_state = state.get("oper_state")
+    # asserted separately above. Coerce ints so string JSON codes still map.
+    oper_state = _coerce_int(state.get("oper_state"))
     if oper_state is not None:
         kwargs["mark_connected"] = oper_state == OPER_STATE_UP
 
-    speed = VERIFIED_OPER_SPEED_KBPS.get(state.get("oper_speed"))
+    oper_speed = _coerce_int(state.get("oper_speed"))
+    connector_type = _coerce_int(state.get("connector_type"))
+    speed = VERIFIED_OPER_SPEED_KBPS.get(oper_speed) if oper_speed is not None else None
     if speed is not None:
         kwargs["speed"] = speed
     duplex = _duplex(state, config)
     if duplex is not None:
         kwargs["duplex"] = duplex
-    # NetBox requires type; verified speed+connector wins, else ``other``.
-    kwargs["type"] = (
-        _TYPE_BY_SPEED_AND_CONNECTOR.get((state.get("oper_speed"), state.get("connector_type")))
-        or DEFAULT_INTERFACE_TYPE
-    )
+    # Assert type only when state reports speed/connector codes. Verified map
+    # wins; unknown codes → ``other``. Omitting type when state is absent
+    # avoids upserting ``other`` over a good prior type on port-state degrade.
+    mapped_type = _TYPE_BY_SPEED_AND_CONNECTOR.get((oper_speed, connector_type))
+    if mapped_type is not None:
+        kwargs["type"] = mapped_type
+    elif oper_speed is not None or connector_type is not None:
+        kwargs["type"] = DEFAULT_INTERFACE_TYPE
 
     if config.get("description"):
         kwargs["description"] = config["description"]
@@ -454,21 +470,39 @@ def _member_interface_names(lag_row: dict) -> list[str]:
     return names
 
 
-def _lag_membership(configs: list[dict], states: list[dict]) -> dict[str, str]:
-    """Map lag-config member names to LAG names from paired config/state rows.
+def _record_membership(membership: dict[str, str], *, member: str, lag: str) -> None:
+    """Bind member→LAG; warn when the same member claims two parents."""
+    existing = membership.get(member)
+    if existing is not None and existing != lag:
+        logger.warning(
+            "Port %r listed as member of both %r and %r; keeping the first",
+            member,
+            existing,
+            lag,
+        )
+        return
+    membership.setdefault(member, lag)
 
-    Membership lists live on lag-config; the LAG ``name`` may appear only on
-    the paired lag-state row (same ``asset_interface_id``).
+
+def _lag_membership(configs: list[dict], states: list[dict]) -> dict[str, str]:
+    """Map member port names to LAG names from config and/or state rows.
+
+    Prefer ``member_ports`` on lag-config; when config omits members (or a LAG
+    appears only in lag-state), use nested members on the state row. The LAG
+    ``name`` may appear on either side of the same ``asset_interface_id``.
     """
+    configs_by_key = _by_key(configs)
     states_by_key = _by_key(states)
     membership: dict[str, str] = {}
-    for config in configs:
-        state = _first_row(states_by_key, _record_key(config), table="lag_states")
+    for key in sorted(set(configs_by_key) | set(states_by_key)):
+        config = _first_row(configs_by_key, key, table="lag_configs")
+        state = _first_row(states_by_key, key, table="lag_states")
         lag = _lag_name(config, state)
         if not lag:
             continue
-        for member in _member_interface_names(config):
-            membership.setdefault(member, lag)
+        members = _member_interface_names(config) or _member_interface_names(state)
+        for member in members:
+            _record_membership(membership, member=member, lag=lag)
     return membership
 
 

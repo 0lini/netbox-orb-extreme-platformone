@@ -31,12 +31,24 @@ from .urls import require_https_url
 DEFAULT_BASE_URL = "https://cloudapi.extremecloudiq.com"
 ASSETS_PAGE_LIMIT = 500  # documented max for the Assets `limit` query param
 CONFIGSTATE_PAGE_SIZE = 500
+# Cap filter ID lists per GetRequest so large estates do not blow gateway /
+# body limits. retrieve() transparently chunks a single list-valued filter.
+CONFIGSTATE_FILTER_CHUNK_SIZE = 200
 # Keep API error text short so logs/exceptions do not retain full upstream
 # bodies (which can include sensitive diagnostics).
 _ERROR_BODY_LIMIT = 200
 # Refresh a minute early so a request never races token expiry.
 _TOKEN_REFRESH_SKEW_SECONDS = 60
 _DEFAULT_TOKEN_TTL_SECONDS = 86400
+
+
+def _chunked(values: list, size: int):
+    """Yield successive slices of `values` with at most `size` items."""
+    if size <= 0:
+        yield values
+        return
+    for index in range(0, len(values), size):
+        yield values[index : index + size]
 
 
 class PlatformOneApiError(RuntimeError):
@@ -213,7 +225,12 @@ class PlatformOneClient:
             page += 1
 
     def retrieve(
-        self, table: str, filters: dict | None = None, *, page_size: int = CONFIGSTATE_PAGE_SIZE
+        self,
+        table: str,
+        filters: dict | None = None,
+        *,
+        page_size: int = CONFIGSTATE_PAGE_SIZE,
+        filter_chunk_size: int = CONFIGSTATE_FILTER_CHUNK_SIZE,
     ) -> Iterator[dict]:
         """Yield every ConfigState record of retrieve-`table`, across all pages.
 
@@ -221,14 +238,32 @@ class PlatformOneClient:
         list, e.g. retrieve("asset-port-state", {"asset_device_id": [a, b]}).
         The API rejects an empty filter body (code 1727) -- always pass at
         least one filter attribute with a non-empty list.
+
+        When exactly one filter value is a list longer than
+        ``filter_chunk_size``, the request is split into sequential chunked
+        retrieves so large device/interface ID sets stay within gateway limits.
         """
+        filters = dict(filters or {})
+        list_fields = [(key, value) for key, value in filters.items() if isinstance(value, list)]
+        if len(list_fields) == 1:
+            field, values = list_fields[0]
+            if len(values) > filter_chunk_size > 0:
+                for chunk in _chunked(list(values), filter_chunk_size):
+                    yield from self.retrieve(
+                        table,
+                        {**filters, field: chunk},
+                        page_size=page_size,
+                        filter_chunk_size=filter_chunk_size,
+                    )
+                return
+
         response_key = configstate_response_key(table)
         page = 1
         while True:
             payload = self._post(
                 f"/configstate/v1/retrieve-{table}",
                 {"page_number": page, "page_size": page_size},
-                filters or {},
+                filters,
             )
             yield from payload.get(response_key) or []
             pagination = payload.get("Pagination") or {}
