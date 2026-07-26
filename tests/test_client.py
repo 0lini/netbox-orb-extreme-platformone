@@ -177,6 +177,45 @@ def test_retrieve_chunks_large_filter_id_lists():
 
 
 @responses.activate
+def test_retrieve_keeps_prior_chunk_rows_when_later_chunk_fails():
+    """A failed filter chunk must not discard rows already fetched from earlier chunks."""
+    url = f"{DEFAULT_BASE_URL}/configstate/v1/retrieve-asset-port-state"
+    ids = [f"id-{i}" for i in range(CONFIGSTATE_FILTER_CHUNK_SIZE + 3)]
+    chunk_a = ids[:CONFIGSTATE_FILTER_CHUNK_SIZE]
+    chunk_b = ids[CONFIGSTATE_FILTER_CHUNK_SIZE:]
+    responses.add(
+        responses.POST,
+        url,
+        match=[responses.matchers.json_params_matcher({"asset_device_id": chunk_a})],
+        json={"AssetPortState": [{"name": "a"}], "Pagination": {"total_pages": 1}},
+        status=200,
+    )
+    responses.add(
+        responses.POST,
+        url,
+        match=[responses.matchers.json_params_matcher({"asset_device_id": chunk_b})],
+        json={"error": "nope"},
+        status=500,
+    )
+
+    rows = list(_client().retrieve("asset-port-state", {"asset_device_id": ids}))
+
+    assert [r["name"] for r in rows] == ["a"]
+    assert len(responses.calls) == 2
+
+
+@responses.activate
+def test_retrieve_raises_when_every_filter_chunk_fails():
+    url = f"{DEFAULT_BASE_URL}/configstate/v1/retrieve-asset-port-state"
+    ids = [f"id-{i}" for i in range(CONFIGSTATE_FILTER_CHUNK_SIZE + 1)]
+    responses.add(responses.POST, url, json={"error": "nope"}, status=500)
+
+    with pytest.raises(PlatformOneApiError, match="500"):
+        list(_client().retrieve("asset-port-state", {"asset_device_id": ids}))
+    assert len(responses.calls) == 2
+
+
+@responses.activate
 def test_non_2xx_raises_platform_one_api_error():
     responses.add(responses.POST, ASSETS_URL, json={"error": "nope"}, status=403)
 

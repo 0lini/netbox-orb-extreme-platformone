@@ -20,6 +20,7 @@ tests/test_openapi_contract.py.
 
 from __future__ import annotations
 
+import logging
 import threading
 import time
 from collections.abc import Iterator
@@ -40,6 +41,8 @@ _ERROR_BODY_LIMIT = 200
 # Refresh a minute early so a request never races token expiry.
 _TOKEN_REFRESH_SKEW_SECONDS = 60
 _DEFAULT_TOKEN_TTL_SECONDS = 86400
+
+logger = logging.getLogger("orb_extreme_platformone.client")
 
 
 def _chunked(values: list, size: int):
@@ -248,13 +251,32 @@ class PlatformOneClient:
         if len(list_fields) == 1:
             field, values = list_fields[0]
             if len(values) > filter_chunk_size > 0:
-                for chunk in _chunked(list(values), filter_chunk_size):
-                    yield from self.retrieve(
-                        table,
-                        {**filters, field: chunk},
-                        page_size=page_size,
-                        filter_chunk_size=filter_chunk_size,
-                    )
+                # Isolate per-chunk failures so a later transient error does not
+                # discard rows already fetched from earlier chunks (list() would
+                # otherwise drop everything when the iterator raises).
+                chunks = list(_chunked(list(values), filter_chunk_size))
+                errors: list[PlatformOneApiError] = []
+                completed = 0
+                for chunk in chunks:
+                    try:
+                        yield from self.retrieve(
+                            table,
+                            {**filters, field: chunk},
+                            page_size=page_size,
+                            filter_chunk_size=filter_chunk_size,
+                        )
+                        completed += 1
+                    except PlatformOneApiError as exc:
+                        errors.append(exc)
+                        logger.warning(
+                            "ConfigState retrieve-%s filter chunk failed (%d IDs); "
+                            "continuing with remaining chunks: %s",
+                            table,
+                            len(chunk),
+                            exc,
+                        )
+                if errors and completed == 0:
+                    raise errors[0]
                 return
 
         response_key = configstate_response_key(table)

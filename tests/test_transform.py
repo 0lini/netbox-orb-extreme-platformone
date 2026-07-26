@@ -720,6 +720,26 @@ def test_ports_to_entities_emits_interface_ip_addresses(stub_sdk):
     assert addresses == {"10.0.0.2/24", "2001:db8::2/64"}
     assert all(ip["assigned_object_interface"]._kw["name"] == "1/1" for ip in ip_entities)
     assert all(ip["assigned_object_interface"]._kw["device"]._kw["name"] == "sw-idf1" for ip in ip_entities)
+    assert all(ip["assigned_object_interface"]._kw["type"] == "1000base-t" for ip in ip_entities)
+
+
+def test_ports_to_entities_ip_stub_omits_type_when_port_state_missing(stub_sdk):
+    """IP assignment stubs must not re-assert type=other when Interface omits type."""
+    ips = [
+        {
+            "asset_interface_id": "if-uuid-1",
+            "address": "10.0.0.2",
+            "mask_length": 24,
+        }
+    ]
+    entities = transform.ports_to_entities(
+        _tables(port_states=[], vlan_properties=[], interface_ips=ips), device="sw-idf1"
+    )
+
+    port = entities[0]._kw["interface"]._kw
+    assert "type" not in port
+    ip = next(e._kw["ip_address"]._kw for e in entities if "ip_address" in e._kw)
+    assert "type" not in ip["assigned_object_interface"]._kw
 
 
 def test_ports_to_entities_emits_svi_ips_via_vlan_interface_name(stub_sdk):
