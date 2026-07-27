@@ -66,7 +66,7 @@ dev = [
 Homepage = "https://github.com/0lini/netbox-orb-extreme-platformone"
 Repository = "https://github.com/0lini/netbox-orb-extreme-platformone"
 Issues = "https://github.com/0lini/netbox-orb-extreme-platformone/issues"
-Changelog = "https://github.com/0lini/netbox-orb-extreme-platformone/blob/main/README.md"
+Changelog = "https://github.com/0lini/netbox-orb-extreme-platformone/blob/main/CHANGELOG.md"
 
 [project.scripts]
 orb-extreme-platformone = "orb_extreme_platformone.__main__:main"

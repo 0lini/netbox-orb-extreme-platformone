@@ -105,13 +105,13 @@ plaintext secrets.
 
 Ordered by practical impact:
 
-1. **Pin** `orb-agent` and worker dependency images/tags (digest or immutable
-   tag) for reproducible deploys.
+1. **Pin** `orb-agent` image tags for reproducible deploys. The checked-in
+   example uses `netboxlabs/orb-agent:2.11.0`; prefer digests in production.
 2. Prefer **env-only secrets** in Orb policy (stop winning from `config:` for
    credential keys) if Orb can guarantee env substitution without YAML values.
-   Dev/CI installs are locked via `uv.lock`; Renovate opens PRs for updates
-   (see `renovate.json`). Runtime installs from Orb `workers.txt` still use
-   `pyproject.toml` lower bounds unless you pin a release there.
+   Dev/CI installs are locked via `uv.lock` (Renovate lockfile maintenance +
+   build-system floor bumps). Runtime installs from Orb `workers.txt` should
+   pin a published package version rather than floating on `.` + lower bounds.
 
 ---
 

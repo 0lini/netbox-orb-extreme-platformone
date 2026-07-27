@@ -71,6 +71,33 @@ jobs:
       - run: uv build
       - run: uvx twine check dist/*
 
+      - name: Smoke-test wheel
+        run: |
+          set -euo pipefail
+          wheel="$(ls dist/*.whl)"
+          uv venv --python 3.14 /tmp/wheel-smoke
+          uv pip install --python /tmp/wheel-smoke "$wheel" \
+            'netboxlabs-diode-sdk>=1.0.0' \
+            'netboxlabs-orb-worker>=1.0.0'
+          /tmp/wheel-smoke/bin/python - <<'PY'
+          import importlib.metadata
+          from importlib.resources import files
+          from pathlib import Path
+          from worker.backend import load_class
+
+          import orb_extreme_platformone as pkg
+
+          assert pkg.__version__ == importlib.metadata.version("netbox-orb-extreme-platformone")
+          assert "Backend" not in pkg.__dict__, "Backend must stay lazy"
+          assert files("orb_extreme_platformone").joinpath("py.typed").is_file()
+          cls = load_class("orb_extreme_platformone")
+          assert cls is pkg.Backend
+          assert Path(pkg.__file__).resolve().as_posix().endswith(
+              "/site-packages/orb_extreme_platformone/__init__.py"
+          )
+          print("wheel smoke ok", pkg.__version__, cls.__module__)
+          PY
+
   # There is no scheduled live-spec contract job anymore: the Platform ONE
   # OpenAPI specs sit behind the developer portal's login wall, with no
   # stable unauthenticated URL to fetch them from. The contract checks still

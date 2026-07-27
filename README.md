@@ -129,7 +129,9 @@ It is not a policy knob.
 | `src/orb_extreme_platformone/transform/ips.py` | Interface IPAddress entities and Device primary IP selection. |
 | `src/orb_extreme_platformone/transform/port_join.py` | Port-table join and native port-name normalization helpers. |
 | `src/orb_extreme_platformone/transform/port_constants.py` | Port transform constants and verified Platform ONE enum mappings. |
-| `src/orb_extreme_platformone/transform/wireless.py` | AP radio Interfaces and WirelessLAN entities. |
+| `src/orb_extreme_platformone/transform/wireless.py` | AP radio / WirelessLAN orchestration and public wireless exports. |
+| `src/orb_extreme_platformone/transform/wireless_rf.py` | Wireless RF helper mappings for radio type, channel, width, and power fields. |
+| `src/orb_extreme_platformone/transform/wireless_auth.py` | WirelessLAN authentication/status helpers and SSID merge logic. |
 | `src/orb_extreme_platformone/transform/virtual_chassis.py` | InferredCluster → VirtualChassis + member positions. |
 | `src/orb_extreme_platformone/transform/common.py` | Shared constants, provenance tags, `CustomFieldValue` helper. |
 | `src/orb_extreme_platformone/identity.py` | Device naming, switch/AP detection, site/building/floor resolution, device-type model mapping. |
@@ -151,7 +153,7 @@ docker run --rm \
   -e DIODE_CLIENT_ID -e DIODE_CLIENT_SECRET \
   -e PLATFORMONE_USERNAME -e PLATFORMONE_PASSWORD \
   -e NETBOX_API_URL -e NETBOX_API_TOKEN \
-  netboxlabs/orb-agent:latest run -c /opt/orb/agent.yaml
+  netboxlabs/orb-agent:2.11.0 run -c /opt/orb/agent.yaml
 ```
 
 `workers.txt` installs the mounted repo (`.`) so Orb can import
@@ -243,8 +245,13 @@ The default `pytest` run is fully offline:
 | Module | What it covers |
 |--------|----------------|
 | `test_client.py` | Platform ONE HTTP client (mocked with `responses`) |
-| `test_backend.py` | Policy tick orchestration (mocked HTTP; live Diode SDK types) |
-| `test_transform.py` | Entity transform against stubbed Diode SDK classes |
+| `test_backend_run.py` | Policy tick orchestration (mocked HTTP; live Diode SDK types) |
+| `test_backend_config.py` | Backend describe / bootstrap fail-closed / config helpers |
+| `test_transform_devices.py` | Device / site / scope / primary-IP transforms |
+| `test_transform_ports.py` | Physical port, VLAN, PoE, duplex, interface-IP transforms |
+| `test_transform_lags.py` | LAG parent/member transforms |
+| `test_transform_wireless.py` | AP radio / WLAN transforms |
+| `test_transform_virtual_chassis.py` | InferredCluster → VirtualChassis transforms |
 | `test_identity.py` | Naming, switch/AP detection, model mapping |
 | `test_bootstrap.py` | NetBox schema bootstrap (mocked REST) |
 | `test_urls.py` | HTTPS URL validation |
