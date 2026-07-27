@@ -43,16 +43,23 @@ dependencies = [
     "netboxlabs-orb-worker>=1.0.0",
 ]
 
+# Keep a pip-compatible extra for consumers that are not on uv yet.
 [project.optional-dependencies]
 dev = [
     "pytest>=8",
     "pytest-cov>=5",
     "responses>=0.25",
     "ruff>=0.15",
-    "mypy>=1.14",
-    "types-requests>=2.31",
-    "build>=1.2",
-    "twine>=5",
+    "ty>=0.0.63",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "pytest-cov>=5",
+    "responses>=0.25",
+    "ruff>=0.15",
+    "ty>=0.0.63",
 ]
 
 [project.urls]
@@ -142,32 +149,22 @@ quote-style = "double"
 indent-style = "space"
 line-ending = "auto"
 
-[tool.mypy]
-python_version = "3.10"
-pretty = true
-show_error_codes = true
-warn_return_any = true
-warn_unused_configs = true
-warn_redundant_casts = true
-warn_unused_ignores = true
-check_untyped_defs = true
-no_implicit_optional = true
-packages = ["orb_extreme_platformone"]
-mypy_path = "src"
+[tool.uv]
+package = true
 
-[[tool.mypy.overrides]]
-module = [
-    "netboxlabs.*",
-    "worker.*",
-    "google.protobuf.*",
-]
-ignore_missing_imports = true
+[tool.ty.environment]
+python-version = "3.10"
+root = ["./src"]
 
-# Diode's published stubs mix protobuf messages with Python wrapper classes
-# (Entity/Device/Tag/Location), which mypy treats as incompatible list elements.
-[[tool.mypy.overrides]]
-module = [
-    "orb_extreme_platformone.transform.*",
-    "orb_extreme_platformone.__main__",
+[tool.ty.src]
+# Package sources only — pytest fixtures are not part of the typed public API.
+exclude = ["tests/**", "**/test_*.py"]
+
+[tool.ty.analysis]
+# Diode/Orb SDK stubs are incomplete or mix protobuf wrappers with Python types.
+replace-imports-with-any = [
+    "netboxlabs.**",
+    "worker.**",
+    "google.protobuf.**",
 ]
-disable_error_code = ["arg-type", "assignment", "return-value", "attr-defined"]
+
