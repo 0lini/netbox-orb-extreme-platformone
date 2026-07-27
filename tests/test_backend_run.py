@@ -14,6 +14,7 @@ from tests.backend_helpers import (
     _mock_empty_clusters,
     _mock_empty_fabric_tables,
     _mock_empty_port_and_lag_tables,
+    _mock_empty_vsmlt_bmac_tables,
     _mock_interface_id_tables_empty,
     _mock_port_tables_empty,
     _policy,
@@ -365,6 +366,22 @@ def test_run_maps_inferred_cluster_to_virtual_chassis():
     # Both member-filter calls return the same cluster; backend dedupes by id.
     _mock_cs("inferred-cluster", "InferredCluster", [cluster])
     _mock_cs("inferred-cluster", "InferredCluster", [cluster])
+    # Prefer MLAG peer_bmac for VirtualChassis platformone_vsmlt_bmac.
+    _mock_cs(
+        "asset-mlag-peer-config",
+        "AssetMlagPeerConfig",
+        [
+            {
+                "asset_device_id": "cs-uuid-42",
+                "peer_bmac": "aa:bb:cc:dd:ee:ff",
+            },
+            {
+                "asset_device_id": "cs-uuid-43",
+                "peer_bmac": "aa:bb:cc:dd:ee:ff",
+            },
+        ],
+    )
+    # SPBM already mocked empty via _mock_empty_port_and_lag_tables fabric tables.
 
     entities = list(Backend().run("platformone_worker", _policy()))
 
@@ -375,6 +392,7 @@ def test_run_maps_inferred_cluster_to_virtual_chassis():
     bodies = [json.loads(c.request.body) for c in cluster_calls]
     assert {"device_one_id": ["inf-uuid-42", "inf-uuid-43"]} in bodies
     assert {"device_two_id": ["inf-uuid-42", "inf-uuid-43"]} in bodies
+    assert any("/retrieve-asset-mlag-peer-config" in c.request.url for c in responses.calls)
 
     chassis = [e.virtual_chassis for e in entities if e.HasField("virtual_chassis")]
     assert len(chassis) == 1
@@ -385,10 +403,12 @@ def test_run_maps_inferred_cluster_to_virtual_chassis():
     assert chassis[0].master.device_type.model == "5320-48P-8XE-FabricEngine"
     assert not chassis[0].description
     assert chassis[0].custom_fields["platformone_cluster_id"].text == "cluster-uuid-1"
+    assert chassis[0].custom_fields["platformone_vsmlt_bmac"].text == "AA:BB:CC:DD:EE:FF"
 
     devices = {e.device.name: e.device for e in entities if e.HasField("device")}
     assert devices["sw-idf1"].virtual_chassis.name == "peer-a / peer-b"
     assert devices["sw-idf1"].virtual_chassis.custom_fields["platformone_cluster_id"].text == "cluster-uuid-1"
+    assert "platformone_vsmlt_bmac" not in devices["sw-idf1"].custom_fields
     assert devices["sw-idf1"].vc_position == 1
     assert devices["sw-idf2"].vc_position == 2
 
@@ -499,6 +519,7 @@ def test_run_keeps_virtual_chassis_when_one_cluster_filter_fails(caplog):
     # First filter (device_one_id) succeeds; second (device_two_id) fails.
     _mock_cs("inferred-cluster", "InferredCluster", [cluster])
     _mock_cs("inferred-cluster", "InferredCluster", [], status=500)
+    _mock_empty_vsmlt_bmac_tables()
 
     entities = list(Backend().run("platformone_worker", _policy()))
 

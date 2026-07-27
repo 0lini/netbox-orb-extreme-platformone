@@ -8,6 +8,7 @@ from .tables import (
     FABRIC_DEVICE_TABLES,
     INTERFACE_ID_TABLES,
     PORT_TABLES,
+    VSMLT_BMAC_TABLES,
     WIRELESS_TABLES,
 )
 
@@ -16,6 +17,7 @@ __all__ = [
     "FABRIC_DEVICE_TABLES",
     "INTERFACE_ID_TABLES",
     "PORT_TABLES",
+    "VSMLT_BMAC_TABLES",
     "WIRELESS_TABLES",
     "correlate",
     "correlated_records",

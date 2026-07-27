@@ -31,6 +31,7 @@ from orb_extreme_platformone.backend import (
     WIRELESS_TABLES,
 )
 from orb_extreme_platformone.client import configstate_response_key
+from orb_extreme_platformone.extract.tables import FABRIC_DEVICE_TABLES, VSMLT_BMAC_TABLES
 
 pytestmark = pytest.mark.contract
 
@@ -77,6 +78,8 @@ def test_configstate_tables_client_uses_still_exist(configstate_spec):
         *(t for t, _ in PORT_TABLES.values()),
         *(t for t, _ in INTERFACE_ID_TABLES.values()),
         *(t for t, _ in WIRELESS_TABLES.values()),
+        *(t for t, _ in FABRIC_DEVICE_TABLES.values()),
+        *(t for t, _ in VSMLT_BMAC_TABLES.values()),
     ]
     for table in used_tables:
         assert f"/retrieve-{table}" in paths, f"retrieve-{table} disappeared from ConfigState"
@@ -94,6 +97,8 @@ def test_configstate_response_keys_and_filter_fields_match(configstate_spec):
         *PORT_TABLES.values(),
         *INTERFACE_ID_TABLES.values(),
         *WIRELESS_TABLES.values(),
+        *FABRIC_DEVICE_TABLES.values(),
+        *VSMLT_BMAC_TABLES.values(),
     ]:
         key = configstate_response_key(table)
         response_schema = schemas[f"{key}GetResponse"]["properties"]

@@ -7,6 +7,7 @@ from worker.models import Config, Policy
 
 from orb_extreme_platformone.backend import FABRIC_DEVICE_TABLES, INTERFACE_ID_TABLES, PORT_TABLES
 from orb_extreme_platformone.client import DEFAULT_BASE_URL, configstate_response_key
+from orb_extreme_platformone.extract.tables import VSMLT_BMAC_TABLES
 
 ASSETS_URL = f"{DEFAULT_BASE_URL}/assets/v1/devices"
 
@@ -33,6 +34,12 @@ def _mock_empty_clusters():
     """Existing port-focused tests do not care about VC; no InferredDevice rows
     means the backend skips retrieve-inferred-cluster entirely."""
     _mock_cs("inferred-device", "InferredDevice", [])
+
+
+def _mock_empty_vsmlt_bmac_tables():
+    """Empty mocks for MLAG/SPBM sources of VirtualChassis v-SMLT BMAC."""
+    for table, _ in VSMLT_BMAC_TABLES.values():
+        _mock_cs(table, configstate_response_key(table), [])
 
 
 def _mock_empty_port_and_lag_tables(*, include_fabric: bool = True):

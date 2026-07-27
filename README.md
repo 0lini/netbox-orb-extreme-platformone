@@ -41,7 +41,7 @@ Platform ONE (Assets + ConfigState)
 | VLAN membership (ConfigState) | Interface `untagged_vlan` / `tagged_vlans` by `vid` with `name=str(vid)` (NetBox requires a name; switch-local names are not site-scoped, so VID is the stable placeholder; named VLAN sync via `retrieve-asset-vlan-config` is not used) |
 | Interface IP addresses (ConfigState) | `IPAddress` — address + `mask_length`, `status` `active`, assigned to the matching interface (bare addresses without a prefix are skipped; SVI/orphan IPs also emit a minimal Interface named from vlan/port/LAG rows) |
 | Link aggregation (ConfigState) | `Interface` — LAG parent (`type=lag`, name, admin `enabled` from duplicate port-config or default up, VLAN trunk/access, `poe_mode`/`poe_type` when joined, optional description/MAC from duplicate port rows, interface CFs); member ports use the same physical-port fields plus Diode `Interface.lag` |
-| Inferred clusters (ConfigState) | `VirtualChassis` — name from peer names, master = primary member (`device_one`), member `vc_position`, provenance tags, `platformone_cluster_id` custom field |
+| Inferred clusters (ConfigState) | `VirtualChassis` — name from peer names, master = primary member (`device_one`), member `vc_position`, provenance tags, `platformone_cluster_id` custom field, plus `platformone_vsmlt_bmac` when present (MLAG `peer_bmac`, else SPBM `smlt_bmac`) |
 | AP radios (ConfigState) | `Interface` — radio name, admin `enabled`, `type` (`ieee802.11*` when known including `ieee802.11be`; else `other` without RF/`wireless_lans`), `rf_role=ap` + `tx_power` / channel / `wireless_lans` only on wireless types, `primary_mac_address` (BSSID, uppercase), interface CFs |
 | SSIDs / WLANs (ConfigState) | `WirelessLAN` — `ssid`, `status` (`active`/`disabled`; unknown → `active`), `auth_type` / `auth_cipher` (unknown → `open` / `auto`, Meraki-style); deduped by SSID across APs (not site-scoped) |
 
@@ -121,7 +121,7 @@ It is not a policy knob.
 | `src/orb_extreme_platformone/extract/ports.py` | Switch port / LAG / PoE / IP extract phases. |
 | `src/orb_extreme_platformone/extract/fabric.py` | ISIS / SPBM fabric identity extract for Device custom fields. |
 | `src/orb_extreme_platformone/extract/wireless.py` | AP radio / SSID extract phase. |
-| `src/orb_extreme_platformone/extract/clusters.py` | InferredDevice → InferredCluster extract for VirtualChassis. |
+| `src/orb_extreme_platformone/extract/clusters.py` | InferredDevice → InferredCluster extract for VirtualChassis; v-SMLT BMAC for cluster CFs. |
 | `src/orb_extreme_platformone/transform/` | **Transform** — Platform ONE records → Diode entities, split by domain. |
 | `src/orb_extreme_platformone/transform/devices.py` | Devices, sites, locations, platforms, roles, primary IP attachment. |
 | `src/orb_extreme_platformone/transform/fabric.py` | ISIS area / system id / SPBM nickname → Device custom fields. |
@@ -327,6 +327,7 @@ Same `{product}_{attribute}` pattern as Meraki (`meraki_*`) and ACI (`aci_*`) / 
 | `platformone_isis_area` | Device | ISIS area (`manual_area_address`, else `area_name`, else learned/default area) |
 | `platformone_isis_system_id` | Device | ISIS `sys_id` from `retrieve-asset-isis-global-config` |
 | `platformone_spbm_nickname` | Device | SPBM `node_nick_name` (else ISIS `area_vnode_nickname`) |
+| `platformone_vsmlt_bmac` | VirtualChassis | v-SMLT / VIST backbone MAC (`peer_bmac`, else `smlt_bmac`; uppercase) |
 
 ### Assurance-ready output
 
@@ -513,9 +514,10 @@ Membership is taken from nested `member_ports` on **lag-config** rows only.
   **802.1Q** access/tagged only — there is no LACP-mode, load-balance, or
   `lacp_key` field. Known enums are therefore left unmapped (not stuffed
   into `description` or invented custom fields) until Diode/NetBox gains
-  first-class LACP attributes. Also not mapped: MLAG peer tables
-  (`retrieve-asset-mlag-*`), RSMLT, or `InferredLag` (the asset lag tables
-  already carry name, admin state, and membership under AssetDevice UUIDs).
+  first-class LACP attributes. Also not mapped: MLAG peer *membership*
+  correlation beyond the VirtualChassis `platformone_vsmlt_bmac` from
+  `peer_bmac`, RSMLT, or `InferredLag` (the asset lag tables already carry
+  name, admin state, and membership under AssetDevice UUIDs).
   AssetLagState has no oper_state / MAC / speed of its own — those only
   appear if port tables also list the LAG interface id.
 
@@ -577,6 +579,11 @@ AssetDevice UUIDs, and transforms each complete in-scope pair to a NetBox
   chassis" validation (Diode applies in iterable order within a batch).
 - **`platformone_cluster_id`** stores the InferredCluster UUID for stable
   correlation; provenance tags match other synced objects.
+- **`platformone_vsmlt_bmac`** stores the cluster-pair virtual backbone MAC
+  (prefer ConfigState `retrieve-asset-mlag-peer-config` `peer_bmac`, else
+  `retrieve-asset-spbm-instance` `smlt_bmac`), uppercased. When members
+  disagree, `device_one`'s value wins with a warning. This is a VirtualChassis
+  attribute, not a Device custom field.
 - Clusters where either member is missing from the scoped device set are
   skipped. Each cluster member-side filter degrades independently (one-sided
   failure still keeps the other). A total cluster extract failure degrades to
@@ -626,7 +633,8 @@ same objects instead of duplicating them.
 - LACP attributes on LAG parents (`mode` / `lacp_key` / `load_balance_algo`)
   and InferredCluster `type` (VIST/ISC) once Diode/NetBox gains matching
   fields (enums are already known).
-- MLAG peer correlation (`retrieve-asset-mlag-*`), if NetBox modeling for
-  multi-chassis LAGs is needed beyond single-device LAG membership.
+- MLAG peer *membership* correlation beyond VirtualChassis
+  `platformone_vsmlt_bmac` (`peer_bmac`), if NetBox modeling for multi-chassis
+  LAGs is needed beyond single-device LAG membership.
 - NetBox `rf_channel` string on radios, and WirelessLAN `scope_site`, once
   live Platform ONE values and NetBox formats are confirmed.

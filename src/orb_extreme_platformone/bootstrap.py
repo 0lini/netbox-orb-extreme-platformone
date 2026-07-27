@@ -22,6 +22,8 @@ CF_CLUSTER_ID = "platformone_cluster_id"
 CF_ISIS_AREA = "platformone_isis_area"
 CF_ISIS_SYSTEM_ID = "platformone_isis_system_id"
 CF_SPBM_NICKNAME = "platformone_spbm_nickname"
+# VirtualChassis (SMLT / VIST pair) identity — not a per-device field.
+CF_VSMLT_BMAC = "platformone_vsmlt_bmac"
 
 CUSTOM_FIELDS = [
     {
@@ -91,6 +93,19 @@ CUSTOM_FIELDS = [
         "description": (
             "SPBM node nickname from ConfigState retrieve-asset-spbm-instance "
             "(node_nick_name), falling back to ISIS area_vnode_nickname."
+        ),
+        "filter_logic": "exact",
+        "unique": False,
+    },
+    {
+        "name": CF_VSMLT_BMAC,
+        "label": "Platform ONE v-SMLT BMAC",
+        "type": "text",
+        "object_types": ["dcim.virtualchassis"],
+        "description": (
+            "Virtual SMLT / VIST backbone MAC for the cluster pair: prefer "
+            "ConfigState retrieve-asset-mlag-peer-config peer_bmac, else "
+            "retrieve-asset-spbm-instance smlt_bmac. Stored uppercase."
         ),
         "filter_logic": "exact",
         "unique": False,

@@ -29,6 +29,7 @@ CF_CLUSTER_ID = bootstrap.CF_CLUSTER_ID
 CF_ISIS_AREA = bootstrap.CF_ISIS_AREA
 CF_ISIS_SYSTEM_ID = bootstrap.CF_ISIS_SYSTEM_ID
 CF_SPBM_NICKNAME = bootstrap.CF_SPBM_NICKNAME
+CF_VSMLT_BMAC = bootstrap.CF_VSMLT_BMAC
 
 
 def _cf_text(value: str) -> CustomFieldValue:

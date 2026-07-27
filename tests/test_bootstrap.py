@@ -68,7 +68,13 @@ def test_ensure_schema_creates_missing_definitions():
     assert all(
         body["unique"] is False
         for body in field_bodies
-        if body["name"] in {bootstrap.CF_ISIS_AREA, bootstrap.CF_ISIS_SYSTEM_ID, bootstrap.CF_SPBM_NICKNAME}
+        if body["name"]
+        in {
+            bootstrap.CF_ISIS_AREA,
+            bootstrap.CF_ISIS_SYSTEM_ID,
+            bootstrap.CF_SPBM_NICKNAME,
+            bootstrap.CF_VSMLT_BMAC,
+        }
     )
 
 
@@ -117,6 +123,7 @@ def test_custom_fields_and_tags_speak_platform_one():
         bootstrap.CF_ISIS_AREA,
         bootstrap.CF_ISIS_SYSTEM_ID,
         bootstrap.CF_SPBM_NICKNAME,
+        bootstrap.CF_VSMLT_BMAC,
     }
     by_name = {f["name"]: f for f in bootstrap.CUSTOM_FIELDS}
     assert by_name[bootstrap.CF_DEVICE_ID]["object_types"] == ["dcim.device"]
@@ -125,9 +132,11 @@ def test_custom_fields_and_tags_speak_platform_one():
     assert by_name[bootstrap.CF_ISIS_AREA]["object_types"] == ["dcim.device"]
     assert by_name[bootstrap.CF_ISIS_SYSTEM_ID]["object_types"] == ["dcim.device"]
     assert by_name[bootstrap.CF_SPBM_NICKNAME]["object_types"] == ["dcim.device"]
+    assert by_name[bootstrap.CF_VSMLT_BMAC]["object_types"] == ["dcim.virtualchassis"]
     assert by_name[bootstrap.CF_ISIS_AREA]["unique"] is False
     assert by_name[bootstrap.CF_ISIS_SYSTEM_ID]["unique"] is False
     assert by_name[bootstrap.CF_SPBM_NICKNAME]["unique"] is False
+    assert by_name[bootstrap.CF_VSMLT_BMAC]["unique"] is False
     assert by_name[bootstrap.CF_DEVICE_ID]["unique"] is True
     by_slug = {tag["slug"]: tag for tag in bootstrap.TAGS}
     assert set(by_slug) == {"extreme-networks", "platform-one", "discovered"}

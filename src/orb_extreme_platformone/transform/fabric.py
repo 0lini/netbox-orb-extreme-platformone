@@ -2,6 +2,9 @@
 
 Focused on fabric identity parameters operators care about in NetBox:
 ISIS area, ISIS system id, and SPBM nickname.
+
+v-SMLT BMAC is a VirtualChassis (cluster pair) attribute — see
+``transform.virtual_chassis``.
 """
 
 from __future__ import annotations

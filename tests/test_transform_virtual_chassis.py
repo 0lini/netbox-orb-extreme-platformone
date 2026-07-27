@@ -52,12 +52,54 @@ def test_virtual_chassis_to_entities_maps_inferred_cluster(stub_sdk):
     assert "description" not in vc
     assert vc["tags"] == ["extreme-networks", "platform-one", "discovered"]
     assert cf(vc["custom_fields"]["platformone_cluster_id"]._kw) == "cluster-uuid-1"
+    assert "platformone_vsmlt_bmac" not in vc["custom_fields"]
     assert "domain" not in vc
     assert "comments" not in vc
     assert memberships == {
         "cs-uuid-42": {"name": "peer-a / peer-b", "position": 1, "cluster_id": "cluster-uuid-1"},
         "cs-uuid-43": {"name": "peer-a / peer-b", "position": 2, "cluster_id": "cluster-uuid-1"},
     }
+
+
+def test_virtual_chassis_attaches_vsmlt_bmac_custom_field(stub_sdk):
+    """v-SMLT BMAC belongs on VirtualChassis (cluster pair), not Device."""
+    records_by_cs_id = {
+        "cs-uuid-42": _record(),
+        "cs-uuid-43": _record(asset=SWITCH_ASSET_PEER, cs_device_id="cs-uuid-43"),
+    }
+
+    entities, _ = transform.virtual_chassis_to_entities(
+        [INFERRED_CLUSTER],
+        records_by_cs_id=records_by_cs_id,
+        vsmlt_bmac_by_cs_id={
+            "cs-uuid-42": "AA:BB:CC:DD:EE:FF",
+            "cs-uuid-43": "AA:BB:CC:DD:EE:FF",
+        },
+    )
+
+    vc = entities[0]._kw["virtual_chassis"]._kw
+    assert cf(vc["custom_fields"]["platformone_cluster_id"]._kw) == "cluster-uuid-1"
+    assert cf(vc["custom_fields"]["platformone_vsmlt_bmac"]._kw) == "AA:BB:CC:DD:EE:FF"
+
+
+def test_virtual_chassis_prefers_device_one_bmac_on_mismatch(stub_sdk, caplog):
+    records_by_cs_id = {
+        "cs-uuid-42": _record(),
+        "cs-uuid-43": _record(asset=SWITCH_ASSET_PEER, cs_device_id="cs-uuid-43"),
+    }
+
+    entities, _ = transform.virtual_chassis_to_entities(
+        [INFERRED_CLUSTER],
+        records_by_cs_id=records_by_cs_id,
+        vsmlt_bmac_by_cs_id={
+            "cs-uuid-42": "11:22:33:44:55:66",
+            "cs-uuid-43": "AA:BB:CC:DD:EE:FF",
+        },
+    )
+
+    vc = entities[0]._kw["virtual_chassis"]._kw
+    assert cf(vc["custom_fields"]["platformone_vsmlt_bmac"]._kw) == "11:22:33:44:55:66"
+    assert "different v-SMLT BMACs" in caplog.text
 
 
 def test_virtual_chassis_to_entities_skips_partial_clusters(stub_sdk):

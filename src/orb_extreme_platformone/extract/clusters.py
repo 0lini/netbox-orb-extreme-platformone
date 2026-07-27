@@ -6,7 +6,8 @@ import logging
 
 from orb_extreme_platformone.client import PlatformOneApiError, PlatformOneClient
 
-from .tables import CLUSTER_MEMBER_FILTERS
+from .retrieve import extract_device_table_buckets
+from .tables import CLUSTER_MEMBER_FILTERS, VSMLT_BMAC_TABLES
 
 logger = logging.getLogger("orb_extreme_platformone.extract")
 
@@ -71,3 +72,40 @@ def extract_inferred_clusters(client: PlatformOneClient, asset_device_ids: list[
         # degrade the whole VC phase (same as the previous all-or-nothing path).
         raise PlatformOneApiError("ConfigState inferred-cluster fetch failed on both member filters")
     return [by_id[key] for key in sorted(by_id)]
+
+
+def extract_vsmlt_bmac_by_device(
+    client: PlatformOneClient,
+    device_ids: list[str],
+    policy_name: str,
+) -> tuple[dict[str, str], list[str]]:
+    """Map AssetDevice UUID → uppercase v-SMLT BMAC for VirtualChassis CFs.
+
+    Prefer ``AssetMlagPeerConfig.peer_bmac`` (VIST virtual backbone MAC); fall
+    back to ``AssetSpbmInstance.smlt_bmac``. Returns
+    ``(bmac_by_cs_id, failed_tables)``.
+    """
+    tables_by_device, failed = extract_device_table_buckets(
+        client,
+        device_ids,
+        VSMLT_BMAC_TABLES,
+        policy_name=policy_name,
+        degradation="v-SMLT BMAC sync without it",
+    )
+    by_device: dict[str, str] = {}
+    for device_id, tables in tables_by_device.items():
+        bmac = None
+        for row in tables.get("mlag_peer_configs") or []:
+            value = str(row.get("peer_bmac") or "").strip()
+            if value:
+                bmac = value.upper()
+                break
+        if bmac is None:
+            for row in tables.get("spbm_instances") or []:
+                value = str(row.get("smlt_bmac") or "").strip()
+                if value:
+                    bmac = value.upper()
+                    break
+        if bmac:
+            by_device[device_id] = bmac
+    return by_device, failed

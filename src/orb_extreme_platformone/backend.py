@@ -31,7 +31,7 @@ from .extract import (
     WIRELESS_TABLES,
     correlated_records,
 )
-from .extract.clusters import extract_inferred_clusters
+from .extract.clusters import extract_inferred_clusters, extract_vsmlt_bmac_by_device
 from .extract.fabric import extract_fabric_tables
 from .extract.ports import extract_port_tables
 from .extract.wireless import extract_wireless_tables
@@ -268,9 +268,23 @@ class Backend(WorkerBackend):
             )
             return [], {}
 
+        member_ids = sorted(
+            {str(cluster.get("device_one_id") or "") for cluster in clusters if cluster.get("device_one_id")}
+            | {
+                str(cluster.get("device_two_id") or "")
+                for cluster in clusters
+                if cluster.get("device_two_id")
+            }
+        )
+        vsmlt_bmac_by_cs_id: dict[str, str] = {}
+        if member_ids:
+            vsmlt_bmac_by_cs_id, vsmlt_failed = extract_vsmlt_bmac_by_device(client, member_ids, policy_name)
+            _log_failed_tables(policy_name, vsmlt_failed, domain="v-SMLT BMAC ")
+
         entities, memberships = transform.virtual_chassis_to_entities(
             clusters,
             records_by_cs_id=records_by_cs_id,
+            vsmlt_bmac_by_cs_id=vsmlt_bmac_by_cs_id,
         )
         unclustered = sorted(set(records_by_cs_id) - set(memberships))
         if unclustered:

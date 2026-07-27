@@ -6,7 +6,7 @@ from netboxlabs.diode.sdk.ingester import Entity, VirtualChassis
 
 from orb_extreme_platformone.identity import device_name, resolve_location
 
-from .common import CF_CLUSTER_ID, PROVENANCE_TAGS, _cf_text, _device_ref, logger
+from .common import CF_CLUSTER_ID, CF_VSMLT_BMAC, PROVENANCE_TAGS, _cf_text, _device_ref, logger
 
 
 def _virtual_chassis_name(cluster: dict, device_one_name: str, device_two_name: str) -> str | None:
@@ -45,10 +45,33 @@ def _master_ref(record: dict, name: str):
     )
 
 
+def _cluster_vsmlt_bmac(
+    one_id: str,
+    two_id: str,
+    vsmlt_bmac_by_cs_id: dict[str, str] | None,
+    *,
+    cluster_id: str | None,
+) -> str | None:
+    """Pick one v-SMLT BMAC for the pair; warn when members disagree."""
+    if not vsmlt_bmac_by_cs_id:
+        return None
+    one = vsmlt_bmac_by_cs_id.get(one_id)
+    two = vsmlt_bmac_by_cs_id.get(two_id)
+    if one and two and one != two:
+        logger.warning(
+            "InferredCluster %s: members report different v-SMLT BMACs (%s vs %s); using device_one value",
+            cluster_id,
+            one,
+            two,
+        )
+    return one or two
+
+
 def virtual_chassis_to_entities(
     clusters: list[dict],
     *,
     records_by_cs_id: dict[str, dict],
+    vsmlt_bmac_by_cs_id: dict[str, str] | None = None,
 ) -> tuple[list[Entity], dict[str, dict]]:
     """Map ConfigState InferredCluster rows to VirtualChassis entities + memberships.
 
@@ -56,6 +79,9 @@ def virtual_chassis_to_entities(
     (backend remaps from InferredDevice IDs). Both members must be present in
     `records_by_cs_id` (already site-scoped); partial clusters are skipped so
     Diode never creates an orphan half-chassis.
+
+    ``vsmlt_bmac_by_cs_id`` supplies per-member BMACs (MLAG peer_bmac / SPBM
+    smlt_bmac) that become VirtualChassis ``platformone_vsmlt_bmac``.
 
     Returns (VC entities, {cs_device_id: {"name", "position", "cluster_id"?}})
     for `devices_to_entities` to attach `virtual_chassis` / `vc_position`.
@@ -113,8 +139,19 @@ def virtual_chassis_to_entities(
             "master": _master_ref(record_one, name_one),
             "tags": PROVENANCE_TAGS,
         }
+        custom_fields: dict = {}
         if cluster_id:
-            vc_kwargs["custom_fields"] = {CF_CLUSTER_ID: _cf_text(cluster_id)}
+            custom_fields[CF_CLUSTER_ID] = _cf_text(cluster_id)
+        vsmlt_bmac = _cluster_vsmlt_bmac(
+            one_id,
+            two_id,
+            vsmlt_bmac_by_cs_id,
+            cluster_id=cluster_id,
+        )
+        if vsmlt_bmac:
+            custom_fields[CF_VSMLT_BMAC] = _cf_text(vsmlt_bmac)
+        if custom_fields:
+            vc_kwargs["custom_fields"] = custom_fields
         entities.append(Entity(virtual_chassis=VirtualChassis(**vc_kwargs)))
 
         membership_one: dict = {"name": chassis_name, "position": 1}
