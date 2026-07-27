@@ -18,6 +18,10 @@ from .urls import require_https_url
 CF_DEVICE_ID = "platformone_device_id"
 CF_INTERFACE_ID = "platformone_interface_id"
 CF_CLUSTER_ID = "platformone_cluster_id"
+# Fabric identity parameters (not unique — shared areas / nicknames are fine).
+CF_ISIS_AREA = "platformone_isis_area"
+CF_ISIS_SYSTEM_ID = "platformone_isis_system_id"
+CF_SPBM_NICKNAME = "platformone_spbm_nickname"
 
 CUSTOM_FIELDS = [
     {
@@ -57,6 +61,39 @@ CUSTOM_FIELDS = [
         ),
         "filter_logic": "exact",
         "unique": True,
+    },
+    {
+        "name": CF_ISIS_AREA,
+        "label": "Platform ONE ISIS Area",
+        "type": "text",
+        "object_types": ["dcim.device"],
+        "description": (
+            "ISIS area address from ConfigState "
+            "(manual_area_address, else area_name, else learned/default area)."
+        ),
+        "filter_logic": "exact",
+        "unique": False,
+    },
+    {
+        "name": CF_ISIS_SYSTEM_ID,
+        "label": "Platform ONE ISIS System ID",
+        "type": "text",
+        "object_types": ["dcim.device"],
+        "description": ("ISIS system id (sys_id) from ConfigState retrieve-asset-isis-global-config."),
+        "filter_logic": "exact",
+        "unique": False,
+    },
+    {
+        "name": CF_SPBM_NICKNAME,
+        "label": "Platform ONE SPBM Nickname",
+        "type": "text",
+        "object_types": ["dcim.device"],
+        "description": (
+            "SPBM node nickname from ConfigState retrieve-asset-spbm-instance "
+            "(node_nick_name), falling back to ISIS area_vnode_nickname."
+        ),
+        "filter_logic": "exact",
+        "unique": False,
     },
 ]
 

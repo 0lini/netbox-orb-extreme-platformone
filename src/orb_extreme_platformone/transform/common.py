@@ -26,6 +26,9 @@ PROVENANCE_TAGS = [tag["name"] for tag in bootstrap.TAGS]
 CF_DEVICE_ID = bootstrap.CF_DEVICE_ID
 CF_INTERFACE_ID = bootstrap.CF_INTERFACE_ID
 CF_CLUSTER_ID = bootstrap.CF_CLUSTER_ID
+CF_ISIS_AREA = bootstrap.CF_ISIS_AREA
+CF_ISIS_SYSTEM_ID = bootstrap.CF_ISIS_SYSTEM_ID
+CF_SPBM_NICKNAME = bootstrap.CF_SPBM_NICKNAME
 
 
 def _cf_text(value: str) -> CustomFieldValue:

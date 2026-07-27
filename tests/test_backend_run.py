@@ -12,6 +12,7 @@ from tests.backend_helpers import (
     _mock_assets,
     _mock_cs,
     _mock_empty_clusters,
+    _mock_empty_fabric_tables,
     _mock_empty_port_and_lag_tables,
     _mock_interface_id_tables_empty,
     _mock_port_tables_empty,
@@ -82,6 +83,7 @@ def test_run_produces_site_location_device_and_interface_entities():
     _mock_cs("asset-port-capabilities", "AssetPortCapabilities", [])
     _mock_cs("asset-poe-power-ports-state", "AssetPoePowerPortsState", [])
     _mock_interface_id_tables_empty()
+    _mock_empty_fabric_tables()
     _mock_empty_clusters()
 
     entities = list(Backend().run("platformone_worker", _policy()))
@@ -108,6 +110,41 @@ def test_run_produces_site_location_device_and_interface_entities():
     assert [v.vid for v in interface.tagged_vlans] == [20]
     assert interface.tagged_vlans[0].name == "20"
     assert interface.mode == "tagged"
+
+
+@responses.activate
+def test_run_attaches_isis_and_spbm_device_custom_fields():
+    _mock_assets([SWITCH_ASSET])
+    _mock_cs("asset-device", "AssetDevice", [CS_SWITCH])
+    _mock_cs("asset-location", "AssetLocation", [{"asset_device_id": "cs-uuid-42", "site_name": "HQ"}])
+    _mock_empty_port_and_lag_tables(include_fabric=False)
+    _mock_cs(
+        "asset-isis-global-config",
+        "AssetIsisGlobalConfig",
+        [
+            {
+                "asset_device_id": "cs-uuid-42",
+                "manual_area_address": "00.0001.0000.00",
+                "sys_id": "0010.0a0b.0c0d.00",
+            }
+        ],
+    )
+    _mock_cs("asset-isis-global-state", "AssetIsisGlobalState", [])
+    _mock_cs(
+        "asset-spbm-instance",
+        "AssetSpbmInstance",
+        [{"asset_device_id": "cs-uuid-42", "node_nick_name": "0.aa.bb", "instance_id": 1}],
+    )
+    _mock_empty_clusters()
+
+    entities = list(Backend().run("platformone_worker", _policy()))
+
+    device = next(e.device for e in entities if e.HasField("device"))
+    assert device.custom_fields["platformone_isis_area"].text == "00.0001.0000.00"
+    assert device.custom_fields["platformone_isis_system_id"].text == "0010.0a0b.0c0d.00"
+    assert device.custom_fields["platformone_spbm_nickname"].text == "0.aa.bb"
+    assert any("/retrieve-asset-isis-global-config" in c.request.url for c in responses.calls)
+    assert any("/retrieve-asset-spbm-instance" in c.request.url for c in responses.calls)
 
 
 @responses.activate
@@ -146,6 +183,7 @@ def test_run_sets_device_primary_ip_from_configstate_interface_cidr():
             }
         ],
     )
+    _mock_empty_fabric_tables()
     _mock_empty_clusters()
 
     entities = list(Backend().run("platformone_worker", _policy()))
@@ -259,6 +297,7 @@ def test_run_survives_a_failed_port_table_and_keeps_the_rest(caplog):
     _mock_cs("asset-port-capabilities", "AssetPortCapabilities", [])
     _mock_cs("asset-poe-power-ports-state", "AssetPoePowerPortsState", [])
     _mock_interface_id_tables_empty()
+    _mock_empty_fabric_tables()
     _mock_empty_clusters()
 
     entities = list(Backend().run("platformone_worker", _policy()))
@@ -400,6 +439,7 @@ def test_run_maps_lag_interfaces_and_member_lag_refs():
     _mock_cs("asset-port-capabilities", "AssetPortCapabilities", [])
     _mock_cs("asset-poe-power-ports-state", "AssetPoePowerPortsState", [])
     _mock_interface_id_tables_empty()
+    _mock_empty_fabric_tables()
     _mock_empty_clusters()
 
     entities = list(Backend().run("platformone_worker", _policy()))
