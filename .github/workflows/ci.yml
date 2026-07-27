@@ -20,23 +20,24 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@v9.0.0
+      # Official Astral action — installs Ruff from uv.lock and runs `ruff check`.
+      - uses: astral-sh/ruff-action@v4.1.0
+        with:
+          version-file: uv.lock
+
+      - uses: astral-sh/ruff-action@v4.1.0
+        with:
+          version-file: uv.lock
+          args: format --check
+
+      # No ty-action yet; use setup-uv + locked ty from the project env.
+      - uses: astral-sh/setup-uv@v9.0.0
         with:
           enable-cache: true
           python-version: "3.14"
 
-      - name: Sync dependencies
-        run: uv sync --locked --group dev
-
-      - name: Lint (ruff check)
-        run: uv run ruff check .
-
-      - name: Format check (ruff format)
-        run: uv run ruff format --check .
-
-      - name: Type check (ty)
-        run: uv run ty check
+      - run: uv sync --locked --group dev
+      - run: uv run ty check
 
   test:
     runs-on: ubuntu-latest
@@ -48,17 +49,13 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@v9.0.0
+      - uses: astral-sh/setup-uv@v9.0.0
         with:
           enable-cache: true
           python-version: ${{ matrix.python-version }}
 
-      - name: Sync dependencies
-        run: uv sync --locked --group dev
-
-      - name: Test (pytest)
-        run: uv run pytest -v --cov --cov-report=term-missing
+      - run: uv sync --locked --group dev
+      - run: uv run pytest -v --cov --cov-report=term-missing
 
   package:
     runs-on: ubuntu-latest
@@ -66,20 +63,13 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@v9.0.0
+      - uses: astral-sh/setup-uv@v9.0.0
         with:
           enable-cache: true
           python-version: "3.14"
 
-      - name: Sync dependencies
-        run: uv sync --locked --group dev
-
-      - name: Build sdist and wheel
-        run: uv build
-
-      - name: Check metadata
-        run: uvx twine check dist/*
+      - run: uv build
+      - run: uvx twine check dist/*
 
   # There is no scheduled live-spec contract job anymore: the Platform ONE
   # OpenAPI specs sit behind the developer portal's login wall, with no
