@@ -79,9 +79,7 @@ CUSTOM_FIELDS = [
         "label": "Platform ONE ISIS System ID",
         "type": "text",
         "object_types": ["dcim.device"],
-        "description": (
-            "ISIS system id (sys_id) from ConfigState retrieve-asset-isis-global-config."
-        ),
+        "description": ("ISIS system id (sys_id) from ConfigState retrieve-asset-isis-global-config."),
         "filter_logic": "exact",
         "unique": False,
     },

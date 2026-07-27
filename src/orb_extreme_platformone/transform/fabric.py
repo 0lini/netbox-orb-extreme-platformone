@@ -42,9 +42,7 @@ def device_fabric_custom_fields(tables: dict[str, list[dict]]) -> dict:
         states, "default_area_address", "dynamically_learned_area"
     )
     system_id = _first_str(configs, "sys_id")
-    nickname = _first_str(instances, "node_nick_name") or _first_str(
-        configs, "area_vnode_nickname"
-    )
+    nickname = _first_str(instances, "node_nick_name") or _first_str(configs, "area_vnode_nickname")
 
     custom_fields: dict = {}
     if area is not None:

@@ -63,14 +63,12 @@ def test_ensure_schema_creates_missing_definitions():
     assert all(
         body["unique"] is True
         for body in field_bodies
-        if body["name"]
-        in {bootstrap.CF_DEVICE_ID, bootstrap.CF_INTERFACE_ID, bootstrap.CF_CLUSTER_ID}
+        if body["name"] in {bootstrap.CF_DEVICE_ID, bootstrap.CF_INTERFACE_ID, bootstrap.CF_CLUSTER_ID}
     )
     assert all(
         body["unique"] is False
         for body in field_bodies
-        if body["name"]
-        in {bootstrap.CF_ISIS_AREA, bootstrap.CF_ISIS_SYSTEM_ID, bootstrap.CF_SPBM_NICKNAME}
+        if body["name"] in {bootstrap.CF_ISIS_AREA, bootstrap.CF_ISIS_SYSTEM_ID, bootstrap.CF_SPBM_NICKNAME}
     )
 
 
