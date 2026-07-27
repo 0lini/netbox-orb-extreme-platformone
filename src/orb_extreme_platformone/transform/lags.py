@@ -66,19 +66,31 @@ def _record_membership(membership: dict[str, str], *, member: str, lag: str) -> 
     membership.setdefault(member, lag)
 
 
-def _lag_membership(configs: list[dict], states: list[dict]) -> dict[str, str]:
+LagRow = tuple[str, dict, dict]
+
+
+def _joined_lag_rows(configs: list[dict], states: list[dict]) -> list[LagRow]:
+    configs_by_key = _by_key(configs)
+    states_by_key = _by_key(states)
+    return [
+        (
+            key,
+            _first_row(configs_by_key, key, table="lag_configs"),
+            _first_row(states_by_key, key, table="lag_states"),
+        )
+        for key in sorted(set(configs_by_key) | set(states_by_key))
+    ]
+
+
+def _lag_membership(joined_rows: list[LagRow]) -> dict[str, str]:
     """Map member port names to LAG names from config and/or state rows.
 
     Prefer ``member_ports`` on lag-config; when config omits members (or a LAG
     appears only in lag-state), use nested members on the state row. The LAG
     ``name`` may appear on either side of the same ``asset_interface_id``.
     """
-    configs_by_key = _by_key(configs)
-    states_by_key = _by_key(states)
     membership: dict[str, str] = {}
-    for key in sorted(set(configs_by_key) | set(states_by_key)):
-        config = _first_row(configs_by_key, key, table="lag_configs")
-        state = _first_row(states_by_key, key, table="lag_states")
+    for _key, config, state in joined_rows:
         lag = _lag_name(config, state)
         if not lag:
             continue
@@ -158,9 +170,7 @@ def _lag_entities(
     port_states: dict[str, list[dict]] | None = None,
 ) -> tuple[list[Entity], set[str], set[str], dict[str, str], dict[str, str]]:
     """Emit LAG parent interfaces. Returns entities plus join bookkeeping."""
-    lag_configs_by_key = _by_key(lag_configs)
-    lag_states_by_key = _by_key(lag_states)
-    lag_keys = set(lag_configs_by_key) | set(lag_states_by_key)
+    joined_rows = _joined_lag_rows(lag_configs, lag_states)
     port_configs = port_configs or {}
     port_states = port_states or {}
 
@@ -168,14 +178,12 @@ def _lag_entities(
     # Unnamed LAG rows are skipped below; their interface ids must still be
     # free to surface as ordinary ports when port tables also list them.
     lag_interface_ids: set[str] = set()
-    membership = _lag_membership(lag_configs, lag_states)
+    membership = _lag_membership(joined_rows)
     lag_names: set[str] = set()
     entities: list[Entity] = []
     emitted_keys: dict[str, str] = {}
 
-    for key in sorted(lag_keys):
-        config = _first_row(lag_configs_by_key, key, table="lag_configs")
-        state = _first_row(lag_states_by_key, key, table="lag_states")
+    for key, config, state in joined_rows:
         name = _lag_name(config, state)
         if not name:
             continue

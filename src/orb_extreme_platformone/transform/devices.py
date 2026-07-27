@@ -6,8 +6,6 @@ import math
 
 from netboxlabs.diode.sdk.ingester import (
     Device,
-    DeviceRole,
-    DeviceType,
     Entity,
     Location,
     Platform,
@@ -18,11 +16,9 @@ from netboxlabs.diode.sdk.ingester import (
 from orb_extreme_platformone.identity import (
     asset_label,
     device_name,
-    device_type_model_for,
     expand_location_paths,
     platform_name,
     resolve_location,
-    role_for,
 )
 
 from .common import (
@@ -31,6 +27,7 @@ from .common import (
     MANUFACTURER,
     PROVENANCE_TAGS,
     _cf_text,
+    _device_identity_fields,
     logger,
 )
 
@@ -87,9 +84,13 @@ def _device_kwargs(
         custom_fields.update(fabric_fields)
     kwargs = {
         "serial": asset.get("serial_number") or None,
-        "site": Site(name=site_name),
         "custom_fields": custom_fields,
         "tags": PROVENANCE_TAGS,
+        **_device_identity_fields(
+            function=asset.get("function"),
+            product_type=asset.get("product_type"),
+            site_name=site_name,
+        ),
     }
     name = device_name(asset)
     if name is not None:
@@ -98,19 +99,8 @@ def _device_kwargs(
     if location is not None:
         kwargs["location"] = location
 
-    role = role_for(asset.get("function"))
-    if role:
-        role_name, role_slug = role
-        kwargs["role"] = DeviceRole(name=role_name, slug=role_slug)
-
     # Assets product_type / os_version only — no ConfigState model_name /
     # firmware_version fallback.
-    product_type = asset.get("product_type")
-    if product_type:
-        kwargs["device_type"] = DeviceType(
-            model=device_type_model_for(product_type), manufacturer=MANUFACTURER
-        )
-        kwargs["manufacturer"] = MANUFACTURER
     platform = platform_name(asset.get("function"), asset.get("os_version"))
     if platform:
         kwargs["platform"] = Platform(name=platform, manufacturer=MANUFACTURER)
@@ -293,18 +283,12 @@ def primary_ip_device_entities(
         # wipe them again.
         kwargs: dict = {
             "name": name,
-            "site": Site(name=site_name),
+            **_device_identity_fields(
+                function=asset.get("function"),
+                product_type=asset.get("product_type"),
+                site_name=site_name,
+            ),
             **primary_ips,
         }
-        role = role_for(asset.get("function"))
-        if role:
-            role_name, role_slug = role
-            kwargs["role"] = DeviceRole(name=role_name, slug=role_slug)
-        product_type = asset.get("product_type")
-        if product_type:
-            kwargs["device_type"] = DeviceType(
-                model=device_type_model_for(product_type), manufacturer=MANUFACTURER
-            )
-            kwargs["manufacturer"] = MANUFACTURER
         entities.append(Entity(device=Device(**kwargs)))
     return entities

@@ -6,6 +6,7 @@ import logging
 
 from orb_extreme_platformone.client import PlatformOneApiError, PlatformOneClient
 
+from .retrieve import retrieve_parallel
 from .tables import CLUSTER_MEMBER_FILTERS
 
 logger = logging.getLogger("orb_extreme_platformone.extract")
@@ -39,16 +40,21 @@ def extract_inferred_clusters(client: PlatformOneClient, asset_device_ids: list[
     inferred_ids = sorted(inferred_to_asset)
     by_id: dict[str, dict] = {}
     failures = 0
-    for filter_field in CLUSTER_MEMBER_FILTERS:
-        try:
-            clusters = list(client.retrieve("inferred-cluster", {filter_field: inferred_ids}))
-        except PlatformOneApiError as exc:
+    jobs = [("inferred-cluster", {filter_field: inferred_ids}) for filter_field in CLUSTER_MEMBER_FILTERS]
+    for filter_field, (_table, clusters, exc) in zip(
+        CLUSTER_MEMBER_FILTERS,
+        retrieve_parallel(client, jobs),
+        strict=True,
+    ):
+        if exc is not None:
             failures += 1
             logger.warning(
                 "ConfigState inferred-cluster filter %s failed, continuing with other member side: %s",
                 filter_field,
                 exc,
             )
+            continue
+        if clusters is None:
             continue
         for cluster in clusters:
             one = str(cluster.get("device_one_id") or "")

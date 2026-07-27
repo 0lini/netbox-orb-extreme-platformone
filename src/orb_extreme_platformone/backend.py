@@ -157,6 +157,30 @@ def _device_names(
     return names
 
 
+def _fanout_context(
+    records: list[dict],
+    *,
+    predicate,
+    policy_name: str,
+    kind: str,
+) -> tuple[dict[str, dict], list[str], dict[str, str], dict[str, dict]]:
+    """Common ConfigState fan-out indexes for per-device table extracts."""
+    records_by_cs_id = _records_by_cs_id(records, predicate=predicate)
+    device_ids = sorted(records_by_cs_id)
+    device_names = _device_names(records_by_cs_id, policy_name=policy_name, kind=kind)
+    device_meta: dict[str, dict] = {}
+    for device_id, record in records_by_cs_id.items():
+        asset = record["asset"]
+        site_name, _ = resolve_location(record.get("location"), asset)
+        device_meta[device_id] = {
+            "site_name": site_name,
+            "function": asset.get("function"),
+            "product_type": asset.get("product_type"),
+            "asset_ip": asset.get("ip_address"),
+        }
+    return records_by_cs_id, device_ids, device_names, device_meta
+
+
 def _build_client(config) -> PlatformOneClient:
     return PlatformOneClient(
         base_url=_cfg_or_env(config, "PLATFORMONE_API_URL", default=DEFAULT_BASE_URL),
@@ -181,7 +205,7 @@ class Backend(WorkerBackend):
             ),
         )
 
-    def run(self, policy_name: str, policy: Policy, **kwargs) -> Iterable[Entity]:  # noqa: ARG002
+    def run(self, policy_name: str, policy: Policy, **_kwargs) -> Iterable[Entity]:
         config = policy.config
 
         if _cfg(config, "BOOTSTRAP", False):
@@ -300,14 +324,14 @@ class Backend(WorkerBackend):
         Device primary IPs and ISIS/SPBM custom fields reuse the same switch
         fan-out.
         """
-        switches = _records_by_cs_id(
+        _switches, device_ids, device_names, device_meta = _fanout_context(
             records,
             predicate=lambda record: is_switch(record["asset"].get("function")),
+            policy_name=policy_name,
+            kind="ports",
         )
-        if not switches:
+        if not device_ids:
             return [], {}, {}
-        device_ids = sorted(switches)
-        device_names = _device_names(switches, policy_name=policy_name, kind="ports")
 
         tables_by_device, failed_tables = extract_port_tables(client, device_ids, policy_name)
         fabric_tables, fabric_failed = extract_fabric_tables(client, device_ids, policy_name)
@@ -322,24 +346,21 @@ class Backend(WorkerBackend):
         entities: list[Entity] = []
         primary_ips_by_cs_id: dict[str, dict[str, str]] = {}
         for device_id in device_ids:
-            record = switches[device_id]
             tables = tables_by_device[device_id]
-            primary = transform.primary_ips_from_tables(tables, asset_ip=record["asset"].get("ip_address"))
+            meta = device_meta[device_id]
+            primary = transform.primary_ips_from_tables(tables, asset_ip=meta.get("asset_ip"))
             if primary:
                 primary_ips_by_cs_id[device_id] = primary
             name = device_names.get(device_id)
             if not name:
                 continue
-            asset = record["asset"]
-            site_name, _ = resolve_location(record.get("location"), asset)
-            product_type = asset.get("product_type")
             entities.extend(
                 transform.ports_to_entities(
                     tables,
                     device=name,
-                    function=asset.get("function"),
-                    site_name=site_name,
-                    product_type=product_type,
+                    function=meta.get("function"),
+                    site_name=meta.get("site_name"),
+                    product_type=meta.get("product_type"),
                 )
             )
         logger.info("Policy %s: mapped %d wired port entities", policy_name, len(entities))
@@ -355,23 +376,14 @@ class Backend(WorkerBackend):
     @staticmethod
     def _radio_entities(client: PlatformOneClient, records: list[dict], policy_name: str) -> list[Entity]:
         """Fetch wireless/SSID tables for in-scope APs and map to Diode entities."""
-        aps = _records_by_cs_id(
+        _aps, device_ids, device_names, device_meta = _fanout_context(
             records,
             predicate=lambda record: is_ap(record["asset"].get("function")),
+            policy_name=policy_name,
+            kind="radios",
         )
-        if not aps:
+        if not device_ids:
             return []
-        device_ids = sorted(aps)
-        device_names = _device_names(aps, policy_name=policy_name, kind="radios")
-        device_meta: dict[str, dict] = {}
-        for device_id, record in aps.items():
-            asset = record["asset"]
-            site_name, _ = resolve_location(record.get("location"), asset)
-            device_meta[device_id] = {
-                "site_name": site_name,
-                "function": asset.get("function"),
-                "product_type": asset.get("product_type"),
-            }
 
         tables_by_device, failed_tables = extract_wireless_tables(client, device_ids, policy_name)
         entities = transform.radios_to_entities(

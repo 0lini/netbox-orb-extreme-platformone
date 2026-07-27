@@ -210,24 +210,59 @@ class PlatformOneClient:
             return payload
         raise AssertionError("unreachable")  # pragma: no cover
 
+    def _paginate(
+        self,
+        path: str,
+        *,
+        page_param: str,
+        size_param: str,
+        size: int,
+        body: dict,
+        response_key: str,
+        total_pages,
+    ) -> Iterator[dict]:
+        page = 1
+        while True:
+            payload = self._post(path, {page_param: page, size_param: size}, body)
+            yield from payload.get(response_key) or []
+            last_page = total_pages(payload, page)
+            if page >= last_page:
+                break
+            page += 1
+
     def get_devices(self, *, classification: str = "ALL", limit: int = ASSETS_PAGE_LIMIT) -> Iterator[dict]:
         """Yield every Assets-API device of `classification`, across all pages.
 
         `classification` (ALL, SWITCH, WIRELESS, ROUTER, ...) is passed
         through verbatim so new upstream values need no client change.
         """
-        page = 1
-        while True:
-            payload = self._post(
-                "/assets/v1/devices",
-                {"page": page, "limit": limit},
-                {"classification": classification},
-            )
-            yield from payload.get("data") or []
-            total_pages = payload.get("total_pages") or page
-            if page >= total_pages:
-                break
-            page += 1
+        yield from self._paginate(
+            "/assets/v1/devices",
+            page_param="page",
+            size_param="limit",
+            size=limit,
+            body={"classification": classification},
+            response_key="data",
+            total_pages=lambda payload, page: payload.get("total_pages") or page,
+        )
+
+    def _retrieve_pages(
+        self,
+        table: str,
+        filters: dict,
+        *,
+        page_size: int,
+    ) -> Iterator[dict]:
+        response_key = configstate_response_key(table)
+        yield from self._paginate(
+            f"/configstate/v1/retrieve-{table}",
+            page_param="page_number",
+            size_param="page_size",
+            size=page_size,
+            body=filters,
+            response_key=response_key,
+            total_pages=lambda payload, page: (payload.get("Pagination") or {}).get("total_pages") or page,
+        )
 
     def retrieve(
         self,
@@ -249,30 +284,14 @@ class PlatformOneClient:
         retrieves so large device/interface ID sets stay within gateway limits.
         """
         filters = dict(filters or {})
+        filter_bodies = [filters]
         list_fields = [(key, value) for key, value in filters.items() if isinstance(value, list)]
         if len(list_fields) == 1:
             field, values = list_fields[0]
             if len(values) > filter_chunk_size > 0:
-                for chunk in _chunked(list(values), filter_chunk_size):
-                    yield from self.retrieve(
-                        table,
-                        {**filters, field: chunk},
-                        page_size=page_size,
-                        filter_chunk_size=filter_chunk_size,
-                    )
-                return
+                filter_bodies = [
+                    {**filters, field: chunk} for chunk in _chunked(list(values), filter_chunk_size)
+                ]
 
-        response_key = configstate_response_key(table)
-        page = 1
-        while True:
-            payload = self._post(
-                f"/configstate/v1/retrieve-{table}",
-                {"page_number": page, "page_size": page_size},
-                filters,
-            )
-            yield from payload.get(response_key) or []
-            pagination = payload.get("Pagination") or {}
-            total_pages = pagination.get("total_pages") or page
-            if page >= total_pages:
-                break
-            page += 1
+        for filter_body in filter_bodies:
+            yield from self._retrieve_pages(table, filter_body, page_size=page_size)

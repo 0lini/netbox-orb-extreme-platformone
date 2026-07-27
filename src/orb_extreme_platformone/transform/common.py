@@ -52,7 +52,24 @@ def _device_ref(
     Assets row to pass that check; top-level Device entities remain the
     source of truth.
     """
-    kwargs: dict = {"name": name}
+    return Device(
+        name=name,
+        **_device_identity_fields(
+            function=function,
+            product_type=product_type,
+            site_name=site_name,
+        ),
+    )
+
+
+def _device_identity_fields(
+    *,
+    function: str | None = None,
+    product_type: str | None = None,
+    site_name: str | None = None,
+) -> dict:
+    """Device identity fields needed by Diode nested refs and light updates."""
+    kwargs: dict = {}
     if site_name:
         kwargs["site"] = Site(name=site_name)
     role = role_for(function)
@@ -63,7 +80,7 @@ def _device_ref(
     if model:
         kwargs["device_type"] = DeviceType(model=model, manufacturer=MANUFACTURER)
         kwargs["manufacturer"] = MANUFACTURER
-    return Device(**kwargs)
+    return kwargs
 
 
 def _interface_custom_fields(*, interface_id: str | None = None) -> dict:
