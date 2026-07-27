@@ -10,7 +10,7 @@
 #     -e PLATFORMONE_USERNAME -e PLATFORMONE_PASSWORD \
 #     # or: -e PLATFORMONE_API_TOKEN \
 #     -e NETBOX_API_URL -e NETBOX_API_TOKEN \   # only needed while BOOTSTRAP: true
-#     netboxlabs/orb-agent:latest run -c /opt/orb/agent.yaml
+#     netboxlabs/orb-agent:2.11.0 run -c /opt/orb/agent.yaml
 #
 # First-run flow (mirrors Meraki/ACI):
 #   1. Set BOOTSTRAP: true and provide NETBOX_API_URL/NETBOX_API_TOKEN so the

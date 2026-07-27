@@ -2,5 +2,16 @@
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
     "config:recommended"
+  ],
+  "lockFileMaintenance": {
+    "enabled": true
+  },
+  "packageRules": [
+    {
+      "description": "Bump build-system floors when newer backends ship (scoped so requires-python is untouched).",
+      "matchManagers": ["pep621"],
+      "matchDepTypes": ["build-system.requires"],
+      "rangeStrategy": "bump"
+    }
   ]
 }

@@ -1,7 +1,10 @@
 # Packages the orb-agent entrypoint pip-installs at container start
 # (pointed to by INSTALL_WORKERS_PATH). Sources can be PyPI, a tar.gz, or a
-# local folder containing pyproject.toml. Mount this repo at /opt/orb and
-# install from the repo root:
-.      # local folder with pyproject.toml (this repository)
-# netbox-orb-extreme-platformone==0.2.0      # ...or from a private index once published
-# netbox_orb_extreme_platformone-0.2.0.tar.gz  # ...or from a built sdist in the mounted volume
+# local folder containing pyproject.toml.
+#
+# Local development: mount this repo at /opt/orb and install from the repo root.
+# Production: prefer a pinned published version so Orb does not float on
+# pyproject lower bounds the way `uv.lock` pins CI/dev.
+.
+# netbox-orb-extreme-platformone==0.2.0      # preferred once published
+# netbox_orb_extreme_platformone-0.2.0.tar.gz  # ...or a built sdist in the mounted volume
