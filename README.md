@@ -1,6 +1,6 @@
 # netbox-orb-extreme-platformone
 
-[![CI](https://github.com/0lini/netbox-orb-extreme-xiq/actions/workflows/ci.yml/badge.svg)](https://github.com/0lini/netbox-orb-extreme-xiq/actions/workflows/ci.yml)
+[![CI](https://github.com/0lini/netbox-orb-extreme-platformone/actions/workflows/ci.yml/badge.svg)](https://github.com/0lini/netbox-orb-extreme-platformone/actions/workflows/ci.yml)
 
 A discovery worker that synchronizes **Extreme Platform ONE** inventory into
 **NetBox**. It runs on the free, open-source [NetBox Labs Orb
@@ -11,10 +11,9 @@ Orb ingest into NetBox — the same pattern as NetBox Labs' first-party
 workers such as Cisco Meraki. No Orb Agent Pro subscription or private
 registry is required.
 
-> **GitHub repo:** [`0lini/netbox-orb-extreme-xiq`](https://github.com/0lini/netbox-orb-extreme-xiq)
-> (historical XIQ name). **Python package / Orb `config.package`:**
-> `orb_extreme_platformone` / PyPI project name
-> `netbox-orb-extreme-platformone`.
+> **GitHub repo:** [`0lini/netbox-orb-extreme-platformone`](https://github.com/0lini/netbox-orb-extreme-platformone).
+> **Python package / Orb `config.package`:** `orb_extreme_platformone` /
+> PyPI project name `netbox-orb-extreme-platformone`.
 
 ```
 Platform ONE (Assets + ConfigState)
