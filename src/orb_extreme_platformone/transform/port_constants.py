@@ -45,6 +45,21 @@ VERIFIED_POE_CLASSIFICATION = {
 }
 OPER_STATE_UP = 1
 
+# Mbps → short label for capability speed-duplex tokens (not Interface.speed).
+_SPEED_MBPS_LABEL = {
+    10: "10M",
+    100: "100M",
+    1000: "1G",
+    2500: "2.5G",
+    5000: "5G",
+    10_000: "10G",
+    20_000: "20G",
+    25_000: "25G",
+    40_000: "40G",
+    50_000: "50G",
+    100_000: "100G",
+}
+
 # (oper_speed, connector_type) -> NetBox interface type. connector_type:
 # 1 = copper, 2 = fiber. Unlisted combinations leave `type` unset.
 _TYPE_BY_SPEED_AND_CONNECTOR = {

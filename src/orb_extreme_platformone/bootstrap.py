@@ -18,6 +18,8 @@ from .urls import require_https_url
 CF_DEVICE_ID = "platformone_device_id"
 CF_INTERFACE_ID = "platformone_interface_id"
 CF_CLUSTER_ID = "platformone_cluster_id"
+# Port capability speed-duplex lists (JSON). Not unique.
+CF_SUPPORTED_SPEEDS = "platformone_supported_speeds"
 
 CUSTOM_FIELDS = [
     {
@@ -57,6 +59,21 @@ CUSTOM_FIELDS = [
         ),
         "filter_logic": "exact",
         "unique": True,
+    },
+    {
+        "name": CF_SUPPORTED_SPEEDS,
+        "label": "Platform ONE Supported Speeds",
+        "type": "json",
+        "object_types": ["dcim.interface"],
+        "description": (
+            "Mapped speed-duplex combinations from ConfigState "
+            "AssetPortCapabilities "
+            "(auto_neg_off_supported_speed_duplex_list / "
+            "auto_neg_on_supported_adv_list). Labels like 1G-full; not NetBox "
+            "Interface.speed (that stays operational kbps)."
+        ),
+        "filter_logic": "disabled",
+        "unique": False,
     },
 ]
 

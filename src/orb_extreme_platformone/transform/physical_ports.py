@@ -16,6 +16,7 @@ from .port_constants import (
     VERIFIED_POE_CLASSIFICATION,
 )
 from .port_join import _first_row, _optional_first_row
+from .supported_speeds import supported_speeds_custom_fields
 from .vlans import _vlan_fields, _vlan_records_for
 
 
@@ -64,6 +65,7 @@ def _iface_base_kwargs(
     config: dict,
     poe_state: dict | None = None,
     poe_config: dict | None = None,
+    custom_field_extra: dict | None = None,
 ) -> dict:
     """Shared identity / admin / PoE fields for physical ports and LAG parents."""
     kwargs = _interface_identity_kwargs(
@@ -71,6 +73,7 @@ def _iface_base_kwargs(
         name=name,
         interface_id=interface_id,
         enabled=config.get("enabled"),
+        custom_field_extra=custom_field_extra,
     )
     poe = _poe_mode(poe_state or {})
     if poe is not None:
@@ -93,6 +96,7 @@ def _port_kwargs(
     poe_state: dict | None = None,
     poe_config: dict | None = None,
 ) -> dict:
+    speed_extra = supported_speeds_custom_fields(capability)
     kwargs = _iface_base_kwargs(
         device=device,
         name=name,
@@ -100,6 +104,7 @@ def _port_kwargs(
         config=config,
         poe_state=poe_state,
         poe_config=poe_config,
+        custom_field_extra=speed_extra or None,
     )
 
     # Link state maps to mark_connected, never to `enabled` -- admin state is

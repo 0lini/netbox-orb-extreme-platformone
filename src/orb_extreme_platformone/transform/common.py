@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ipaddress
+import json
 import logging
 
 from netboxlabs.diode.sdk.ingester import (
@@ -26,10 +27,16 @@ PROVENANCE_TAGS = [tag["name"] for tag in bootstrap.TAGS]
 CF_DEVICE_ID = bootstrap.CF_DEVICE_ID
 CF_INTERFACE_ID = bootstrap.CF_INTERFACE_ID
 CF_CLUSTER_ID = bootstrap.CF_CLUSTER_ID
+CF_SUPPORTED_SPEEDS = bootstrap.CF_SUPPORTED_SPEEDS
 
 
 def _cf_text(value: str) -> CustomFieldValue:
     return CustomFieldValue(text=value)
+
+
+def _cf_json(value: object) -> CustomFieldValue:
+    """Wrap a JSON-serializable value for a NetBox JSON custom field."""
+    return CustomFieldValue(json=json.dumps(value, separators=(",", ":"), sort_keys=True))
 
 
 def _device_ref(
@@ -63,11 +70,18 @@ def _device_ref(
     return Device(**kwargs)
 
 
-def _interface_custom_fields(*, interface_id: str | None = None) -> dict:
-    """Build interface custom fields (ConfigState asset_interface_id)."""
-    if not interface_id:
-        return {}
-    return {CF_INTERFACE_ID: _cf_text(str(interface_id))}
+def _interface_custom_fields(
+    *,
+    interface_id: str | None = None,
+    extra: dict | None = None,
+) -> dict:
+    """Build interface custom fields (ConfigState asset_interface_id + extras)."""
+    fields: dict = {}
+    if interface_id:
+        fields[CF_INTERFACE_ID] = _cf_text(str(interface_id))
+    if extra:
+        fields.update(extra)
+    return fields
 
 
 def _coerce_bool(value) -> bool | None:
@@ -91,6 +105,7 @@ def _interface_identity_kwargs(
     name: str,
     interface_id: str | None = None,
     enabled=None,
+    custom_field_extra: dict | None = None,
 ) -> dict:
     """Shared device/name/tags/custom_fields/enabled base for Interface entities.
 
@@ -103,7 +118,10 @@ def _interface_identity_kwargs(
         "name": name,
         "tags": PROVENANCE_TAGS,
     }
-    custom_fields = _interface_custom_fields(interface_id=interface_id)
+    custom_fields = _interface_custom_fields(
+        interface_id=interface_id,
+        extra=custom_field_extra,
+    )
     if custom_fields:
         kwargs["custom_fields"] = custom_fields
     coerced = _coerce_bool(enabled)

@@ -59,5 +59,8 @@ orb:
           # one fall back to the Assets API's flat site name. Platform ONE
           # assigns every device a site itself ("Default Site"), so there is
           # no worker-side fallback site.
+          # Port capability speed-duplex arrays sync into
+          # platformone_supported_speeds (JSON); re-run BOOTSTRAP: true once
+          # after upgrading so that custom field exists in NetBox.
         scope:
           sites: ["*"]                     # or ["HQ", "Branch A"]

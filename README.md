@@ -321,6 +321,7 @@ Same `{product}_{attribute}` pattern as Meraki (`meraki_*`) and ACI (`aci_*`) / 
 | `platformone_device_id` | Device | Assets `device_id` (unique) |
 | `platformone_interface_id` | Interface | ConfigState `asset_interface_id` (unique) |
 | `platformone_cluster_id` | VirtualChassis | InferredCluster UUID (unique) |
+| `platformone_supported_speeds` | Interface | Mapped speed-duplex capability arrays (`forced` / `advertised`); not operational `Interface.speed` |
 
 ### Assurance-ready output
 
@@ -462,15 +463,20 @@ transformed from ConfigState tables joined on `asset_interface_id`
   `virtual`.
 - **Speed, duplex, and connector use verified codes only.** `oper_speed`
   and `connector_type` have no OpenAPI value table; only codes confirmed
-  against production hardware are mapped (`oper_speed 4` = 1 Gbit/s,
-  `connector_type 1/2` = copper/fiber → `1000base-t` / `1000base-x-sfp`).
-  Unknown speed/connector codes leave speed unset but set Interface `type`
-  to `other`. When port-state is absent entirely, `type` is omitted so a
-  state-table degrade cannot overwrite a previously good type with `other`.
-  **Duplex** uses the verified Platform ONE enum on `oper_duplex` (1 = half,
-  2 = full); when oper is unset, config `duplex` is the fallback (also 4 =
-  auto). Config-side `speed` remains unverified and is not used. MACs are
-  uppercased (Meraki posture).
+  against production hardware are mapped (`oper_speed 4` = 1 Gbit/s →
+  `Interface.speed` 1_000_000 kbps, `connector_type 1/2` = copper/fiber →
+  `1000base-t` / `1000base-x-sfp`). Unknown speed/connector codes leave
+  speed unset but set Interface `type` to `other`. When port-state is
+  absent entirely, `type` is omitted so a state-table degrade cannot
+  overwrite a previously good type with `other`. **Duplex** uses the
+  verified Platform ONE enum on `oper_duplex` (1 = half, 2 = full); when
+  oper is unset, config `duplex` is the fallback (also 4 = auto).
+  Config-side `speed` remains unverified and is not used. Capability
+  arrays (`auto_neg_off_supported_speed_duplex_list` /
+  `auto_neg_on_supported_adv_list`) cannot fit NetBox's single `speed`
+  field; mapped labels (e.g. `1G-full`) land in
+  `platformone_supported_speeds` instead. MACs are uppercased (Meraki
+  posture).
 
 ### LAG interfaces and membership
 

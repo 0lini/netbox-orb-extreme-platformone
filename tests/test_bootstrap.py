@@ -60,7 +60,17 @@ def test_ensure_schema_creates_missing_definitions():
         for c in responses.calls
         if c.request.method == "POST" and "custom-fields" in c.request.url
     ]
-    assert all(body["unique"] is True for body in field_bodies)
+    assert all(
+        body["unique"] is True
+        for body in field_bodies
+        if body["name"]
+        in {bootstrap.CF_DEVICE_ID, bootstrap.CF_INTERFACE_ID, bootstrap.CF_CLUSTER_ID}
+    )
+    assert all(
+        body["unique"] is False
+        for body in field_bodies
+        if body["name"] == bootstrap.CF_SUPPORTED_SPEEDS
+    )
 
 
 @responses.activate
@@ -92,7 +102,8 @@ def test_ensure_schema_patches_unique_onto_existing_fields():
     bootstrap.ensure_schema(NETBOX, "token")
 
     patches = [c for c in responses.calls if c.request.method == "PATCH"]
-    assert len(patches) == len(bootstrap.CUSTOM_FIELDS)
+    unique_true = [f for f in bootstrap.CUSTOM_FIELDS if f.get("unique") is True]
+    assert len(patches) == len(unique_true)
     assert all(json.loads(c.request.body) == {"unique": True} for c in patches)
     # Tags carry no `unique` concept; existing tags are left untouched.
     assert not [c for c in responses.calls if c.request.method == "POST"]
@@ -104,12 +115,16 @@ def test_custom_fields_and_tags_speak_platform_one():
         bootstrap.CF_DEVICE_ID,
         bootstrap.CF_INTERFACE_ID,
         bootstrap.CF_CLUSTER_ID,
+        bootstrap.CF_SUPPORTED_SPEEDS,
     }
     by_name = {f["name"]: f for f in bootstrap.CUSTOM_FIELDS}
     assert by_name[bootstrap.CF_DEVICE_ID]["object_types"] == ["dcim.device"]
     assert by_name[bootstrap.CF_INTERFACE_ID]["object_types"] == ["dcim.interface"]
     assert by_name[bootstrap.CF_CLUSTER_ID]["object_types"] == ["dcim.virtualchassis"]
-    assert all(field["unique"] is True for field in bootstrap.CUSTOM_FIELDS)
+    assert by_name[bootstrap.CF_SUPPORTED_SPEEDS]["object_types"] == ["dcim.interface"]
+    assert by_name[bootstrap.CF_SUPPORTED_SPEEDS]["type"] == "json"
+    assert by_name[bootstrap.CF_SUPPORTED_SPEEDS]["unique"] is False
+    assert by_name[bootstrap.CF_DEVICE_ID]["unique"] is True
     by_slug = {tag["slug"]: tag for tag in bootstrap.TAGS}
     assert set(by_slug) == {"extreme-networks", "platform-one", "discovered"}
     assert by_slug["extreme-networks"]["color"] == "440099"

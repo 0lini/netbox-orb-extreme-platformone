@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Interface JSON custom field `platformone_supported_speeds` from ConfigState
+  port-capability speed-duplex arrays (forced / advertised), mapped to labels
+  like `1G-full`. Native `Interface.speed` remains operational kbps only.
+  Re-run bootstrap once so NetBox creates the field.
+
 ### Changed
 - Adopted `src/` layout, Astral tooling (`uv` / `ruff` / `ty`), and richer packaging metadata.
 - Split port and wireless transform modules (and matching tests) by domain.
