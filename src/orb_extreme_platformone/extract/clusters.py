@@ -81,9 +81,8 @@ def extract_vsmlt_bmac_by_device(
 ) -> tuple[dict[str, str], list[str]]:
     """Map AssetDevice UUID → uppercase v-SMLT BMAC for VirtualChassis CFs.
 
-    Prefer ``AssetMlagPeerConfig.peer_bmac`` (VIST virtual backbone MAC); fall
-    back to ``AssetSpbmInstance.smlt_bmac``. Returns
-    ``(bmac_by_cs_id, failed_tables)``.
+    Source: ``AssetMlagPeerConfig.peer_bmac`` (VIST pair virtual backbone MAC).
+    Returns ``(bmac_by_cs_id, failed_tables)``.
     """
     tables_by_device, failed = extract_device_table_buckets(
         client,
@@ -94,18 +93,9 @@ def extract_vsmlt_bmac_by_device(
     )
     by_device: dict[str, str] = {}
     for device_id, tables in tables_by_device.items():
-        bmac = None
         for row in tables.get("mlag_peer_configs") or []:
             value = str(row.get("peer_bmac") or "").strip()
             if value:
-                bmac = value.upper()
+                by_device[device_id] = value.upper()
                 break
-        if bmac is None:
-            for row in tables.get("spbm_instances") or []:
-                value = str(row.get("smlt_bmac") or "").strip()
-                if value:
-                    bmac = value.upper()
-                    break
-        if bmac:
-            by_device[device_id] = bmac
     return by_device, failed

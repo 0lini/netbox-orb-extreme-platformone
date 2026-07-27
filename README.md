@@ -41,7 +41,7 @@ Platform ONE (Assets + ConfigState)
 | VLAN membership (ConfigState) | Interface `untagged_vlan` / `tagged_vlans` by `vid` with `name=str(vid)` (NetBox requires a name; switch-local names are not site-scoped, so VID is the stable placeholder; named VLAN sync via `retrieve-asset-vlan-config` is not used) |
 | Interface IP addresses (ConfigState) | `IPAddress` — address + `mask_length`, `status` `active`, assigned to the matching interface (bare addresses without a prefix are skipped; SVI/orphan IPs also emit a minimal Interface named from vlan/port/LAG rows) |
 | Link aggregation (ConfigState) | `Interface` — LAG parent (`type=lag`, name, admin `enabled` from duplicate port-config or default up, VLAN trunk/access, `poe_mode`/`poe_type` when joined, optional description/MAC from duplicate port rows, interface CFs); member ports use the same physical-port fields plus Diode `Interface.lag` |
-| Inferred clusters (ConfigState) | `VirtualChassis` — name from peer names, master = primary member (`device_one`), member `vc_position`, provenance tags, `platformone_cluster_id` custom field, plus `platformone_vsmlt_bmac` when present (MLAG `peer_bmac`, else SPBM `smlt_bmac`) |
+| Inferred clusters (ConfigState) | `VirtualChassis` — name from peer names, master = primary member (`device_one`), member `vc_position`, provenance tags, `platformone_cluster_id` custom field, plus `platformone_vsmlt_bmac` when present (MLAG `peer_bmac`) |
 | AP radios (ConfigState) | `Interface` — radio name, admin `enabled`, `type` (`ieee802.11*` when known including `ieee802.11be`; else `other` without RF/`wireless_lans`), `rf_role=ap` + `tx_power` / channel / `wireless_lans` only on wireless types, `primary_mac_address` (BSSID, uppercase), interface CFs |
 | SSIDs / WLANs (ConfigState) | `WirelessLAN` — `ssid`, `status` (`active`/`disabled`; unknown → `active`), `auth_type` / `auth_cipher` (unknown → `open` / `auto`, Meraki-style); deduped by SSID across APs (not site-scoped) |
 
@@ -327,7 +327,7 @@ Same `{product}_{attribute}` pattern as Meraki (`meraki_*`) and ACI (`aci_*`) / 
 | `platformone_isis_area` | Device | ISIS area (`manual_area_address`, else `area_name`, else learned/default area) |
 | `platformone_isis_system_id` | Device | ISIS `sys_id` from `retrieve-asset-isis-global-config` |
 | `platformone_spbm_nickname` | Device | SPBM `node_nick_name` (else ISIS `area_vnode_nickname`) |
-| `platformone_vsmlt_bmac` | VirtualChassis | v-SMLT / VIST backbone MAC (`peer_bmac`, else `smlt_bmac`; uppercase) |
+| `platformone_vsmlt_bmac` | VirtualChassis | v-SMLT / VIST backbone MAC (`peer_bmac`; uppercase) |
 
 ### Assurance-ready output
 
@@ -580,10 +580,9 @@ AssetDevice UUIDs, and transforms each complete in-scope pair to a NetBox
 - **`platformone_cluster_id`** stores the InferredCluster UUID for stable
   correlation; provenance tags match other synced objects.
 - **`platformone_vsmlt_bmac`** stores the cluster-pair virtual backbone MAC
-  (prefer ConfigState `retrieve-asset-mlag-peer-config` `peer_bmac`, else
-  `retrieve-asset-spbm-instance` `smlt_bmac`), uppercased. When members
-  disagree, `device_one`'s value wins with a warning. This is a VirtualChassis
-  attribute, not a Device custom field.
+  from ConfigState `retrieve-asset-mlag-peer-config` `peer_bmac`, uppercased.
+  When members disagree, `device_one`'s value wins with a warning. This is a
+  VirtualChassis attribute, not a Device custom field.
 - Clusters where either member is missing from the scoped device set are
   skipped. Each cluster member-side filter degrades independently (one-sided
   failure still keeps the other). A total cluster extract failure degrades to

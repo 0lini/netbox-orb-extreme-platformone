@@ -12,8 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `platformone_isis_system_id`, and `platformone_spbm_nickname` (from
   ConfigState ISIS global config/state and SPBM instance).
 - VirtualChassis custom field `platformone_vsmlt_bmac` for the SMLT/VIST
-  cluster-pair backbone MAC (prefer MLAG `peer_bmac`, else SPBM `smlt_bmac`).
-  Re-run bootstrap once so NetBox creates the new field definitions.
+  cluster-pair backbone MAC from MLAG `peer_bmac`. Re-run bootstrap once so
+  NetBox creates the new field definitions.
 
 ### Changed
 - Adopted `src/` layout, Astral tooling (`uv` / `ruff` / `ty`), and richer packaging metadata.

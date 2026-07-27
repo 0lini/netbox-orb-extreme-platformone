@@ -103,9 +103,9 @@ CUSTOM_FIELDS = [
         "type": "text",
         "object_types": ["dcim.virtualchassis"],
         "description": (
-            "Virtual SMLT / VIST backbone MAC for the cluster pair: prefer "
-            "ConfigState retrieve-asset-mlag-peer-config peer_bmac, else "
-            "retrieve-asset-spbm-instance smlt_bmac. Stored uppercase."
+            "Virtual SMLT / VIST backbone MAC for the cluster pair "
+            "(ConfigState retrieve-asset-mlag-peer-config peer_bmac). "
+            "Stored uppercase."
         ),
         "filter_logic": "exact",
         "unique": False,

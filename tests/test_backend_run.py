@@ -366,7 +366,6 @@ def test_run_maps_inferred_cluster_to_virtual_chassis():
     # Both member-filter calls return the same cluster; backend dedupes by id.
     _mock_cs("inferred-cluster", "InferredCluster", [cluster])
     _mock_cs("inferred-cluster", "InferredCluster", [cluster])
-    # Prefer MLAG peer_bmac for VirtualChassis platformone_vsmlt_bmac.
     _mock_cs(
         "asset-mlag-peer-config",
         "AssetMlagPeerConfig",
@@ -381,7 +380,6 @@ def test_run_maps_inferred_cluster_to_virtual_chassis():
             },
         ],
     )
-    # SPBM already mocked empty via _mock_empty_port_and_lag_tables fabric tables.
 
     entities = list(Backend().run("platformone_worker", _policy()))
 

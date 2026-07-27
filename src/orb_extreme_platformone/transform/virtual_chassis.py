@@ -80,8 +80,8 @@ def virtual_chassis_to_entities(
     `records_by_cs_id` (already site-scoped); partial clusters are skipped so
     Diode never creates an orphan half-chassis.
 
-    ``vsmlt_bmac_by_cs_id`` supplies per-member BMACs (MLAG peer_bmac / SPBM
-    smlt_bmac) that become VirtualChassis ``platformone_vsmlt_bmac``.
+    ``vsmlt_bmac_by_cs_id`` supplies per-member MLAG ``peer_bmac`` values that
+    become VirtualChassis ``platformone_vsmlt_bmac``.
 
     Returns (VC entities, {cs_device_id: {"name", "position", "cluster_id"?}})
     for `devices_to_entities` to attach `virtual_chassis` / `vc_position`.

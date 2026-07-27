@@ -43,11 +43,9 @@ FABRIC_DEVICE_TABLES = {
     "spbm_instances": ("asset-spbm-instance", "asset_device_id"),
 }
 
-# Sources for VirtualChassis v-SMLT BMAC (cluster pair attribute).
-# Prefer MLAG peer_bmac (VIST virtual backbone MAC); SPBM smlt_bmac is fallback.
+# VirtualChassis v-SMLT BMAC: VIST pair backbone MAC from MLAG peer config.
 VSMLT_BMAC_TABLES = {
     "mlag_peer_configs": ("asset-mlag-peer-config", "asset_device_id"),
-    "spbm_instances": ("asset-spbm-instance", "asset_device_id"),
 }
 
 # InferredCluster.device_one_id / device_two_id are InferredDevice UUIDs
