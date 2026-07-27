@@ -12,7 +12,7 @@ public issue with live credentials, inventory exports, or exploit details.
 
 | Surface | Role |
 |---------|------|
-| `orb_extreme_platformone/` | Production worker: Platform ONE HTTP client, NetBox bootstrap REST, Diode entity mapping |
+| `src/orb_extreme_platformone/` | Production worker: Platform ONE HTTP client, NetBox bootstrap REST, Diode entity mapping |
 | `agent.yaml` / `workers.txt` | Orb Agent policy + install path (env-substituted secrets) |
 | `.github/workflows/ci.yml` | Lint + pytest on PRs |
 

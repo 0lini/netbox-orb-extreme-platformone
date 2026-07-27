@@ -19,6 +19,7 @@ dependencies = [
 dev = ["pytest>=8", "responses>=0.25", "ruff>=0.15"]
 
 [tool.setuptools.packages.find]
+where = ["src"]
 include = ["orb_extreme_platformone*"]
 
 [tool.setuptools.dynamic]
