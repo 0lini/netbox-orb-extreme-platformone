@@ -149,15 +149,23 @@ def stub_sdk(monkeypatch):
     """
     import orb_extreme_platformone.transform.common as transform_common
     import orb_extreme_platformone.transform.devices as transform_devices
+    import orb_extreme_platformone.transform.ips as transform_ips
+    import orb_extreme_platformone.transform.lags as transform_lags
+    import orb_extreme_platformone.transform.physical_ports as transform_physical_ports
     import orb_extreme_platformone.transform.ports as transform_ports
     import orb_extreme_platformone.transform.virtual_chassis as transform_vc
+    import orb_extreme_platformone.transform.vlans as transform_vlans
     import orb_extreme_platformone.transform.wireless as transform_wireless
 
     modules = (
         transform,
         transform_common,
         transform_devices,
+        transform_ips,
+        transform_lags,
+        transform_physical_ports,
         transform_ports,
+        transform_vlans,
         transform_vc,
         transform_wireless,
     )

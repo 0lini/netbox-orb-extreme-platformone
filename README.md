@@ -122,7 +122,13 @@ It is not a policy knob.
 | `src/orb_extreme_platformone/extract/clusters.py` | InferredDevice → InferredCluster extract for VirtualChassis. |
 | `src/orb_extreme_platformone/transform/` | **Transform** — Platform ONE records → Diode entities, split by domain. |
 | `src/orb_extreme_platformone/transform/devices.py` | Devices, sites, locations, platforms, roles, primary IP attachment. |
-| `src/orb_extreme_platformone/transform/ports.py` | Physical ports, VLANs, PoE, interface IPs, LAG parents/members. |
+| `src/orb_extreme_platformone/transform/ports.py` | Port transform entrypoint and public compatibility exports. |
+| `src/orb_extreme_platformone/transform/physical_ports.py` | Physical port Interface fields, PoE, duplex, VLAN/IP attachment. |
+| `src/orb_extreme_platformone/transform/lags.py` | LAG parent/member Interface mapping. |
+| `src/orb_extreme_platformone/transform/vlans.py` | Interface VLAN mode and membership helpers. |
+| `src/orb_extreme_platformone/transform/ips.py` | Interface IPAddress entities and Device primary IP selection. |
+| `src/orb_extreme_platformone/transform/port_join.py` | Port-table join and native port-name normalization helpers. |
+| `src/orb_extreme_platformone/transform/port_constants.py` | Port transform constants and verified Platform ONE enum mappings. |
 | `src/orb_extreme_platformone/transform/wireless.py` | AP radio Interfaces and WirelessLAN entities. |
 | `src/orb_extreme_platformone/transform/virtual_chassis.py` | InferredCluster → VirtualChassis + member positions. |
 | `src/orb_extreme_platformone/transform/common.py` | Shared constants, provenance tags, `CustomFieldValue` helper. |
@@ -215,12 +221,13 @@ Full posture and residual risks: [`SECURITY.md`](SECURITY.md).
 ## Development
 
 ```bash
-pip install -e ".[dev]"
+uv sync --group dev
 export PLATFORMONE_USERNAME=...             # or PLATFORMONE_API_TOKEN=...
 export PLATFORMONE_PASSWORD=...             # or put both in .env (gitignored)
-python -m orb_extreme_platformone           # dry run: extract → transform → print entities
-pytest                                      # offline test suite
-ruff check . && ruff format --check .       # lint + format
+uv run python -m orb_extreme_platformone    # dry run: extract → transform → print entities
+uv run pytest                               # offline test suite
+uv run ruff check . && uv run ruff format --check .
+uv run ty check                             # type check (Astral ty)
 ```
 
 The Orb Agent worker (`netboxlabs-orb-worker`) owns the Diode client and the

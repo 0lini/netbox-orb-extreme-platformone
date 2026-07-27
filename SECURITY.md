@@ -107,10 +107,11 @@ Ordered by practical impact:
 
 1. **Pin** `orb-agent` and worker dependency images/tags (digest or immutable
    tag) for reproducible deploys.
-2. Add a **lockfile** (or exact pins) for production worker installs; current
-   `pyproject.toml` uses lower bounds only.
-3. Prefer **env-only secrets** in Orb policy (stop winning from `config:` for
+2. Prefer **env-only secrets** in Orb policy (stop winning from `config:` for
    credential keys) if Orb can guarantee env substitution without YAML values.
+   Dev/CI installs are locked via `uv.lock`; Renovate opens PRs for updates
+   (see `renovate.json`). Runtime installs from Orb `workers.txt` still use
+   `pyproject.toml` lower bounds unless you pin a release there.
 
 ---
 

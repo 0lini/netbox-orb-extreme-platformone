@@ -39,12 +39,12 @@ _COLON_PORT_NAME_RE = re.compile(r"^\d+(?::[A-Za-z0-9]+)+$")
 
 def is_switch(function: str | None) -> bool:
     """Whether an Assets `function` value is a switch OS (see SWITCH_DEVICE_FUNCTIONS)."""
-    return bool(function) and function.upper() in SWITCH_DEVICE_FUNCTIONS
+    return function is not None and function.upper() in SWITCH_DEVICE_FUNCTIONS
 
 
 def is_ap(function: str | None) -> bool:
     """Whether an Assets `function` value is an access point (see AP_DEVICE_FUNCTIONS)."""
-    return bool(function) and function.upper() in AP_DEVICE_FUNCTIONS
+    return function is not None and function.upper() in AP_DEVICE_FUNCTIONS
 
 
 def native_port_name(name: str, function: str | None) -> str:

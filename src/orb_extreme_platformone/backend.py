@@ -52,12 +52,12 @@ DEFAULT_CLASSIFICATION = "ALL"
 __all__ = [
     "APP_NAME",
     "APP_VERSION",
-    "Backend",
     "CLUSTER_MEMBER_FILTERS",
     "DEFAULT_CLASSIFICATION",
     "INTERFACE_ID_TABLES",
     "PORT_TABLES",
     "WIRELESS_TABLES",
+    "Backend",
 ]
 
 

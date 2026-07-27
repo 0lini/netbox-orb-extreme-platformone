@@ -30,7 +30,7 @@ def test_ensure_schema_accepts_http_localhost_netbox_url(monkeypatch):
     """Local stack uses http://localhost:8000; bootstrap must not reject it."""
     seen: list[str] = []
 
-    def _fake_ensure_all(url, token, definitions):  # noqa: ARG001
+    def _fake_ensure_all(url, token, definitions):
         seen.append(url)
 
     monkeypatch.setattr(bootstrap, "_ensure_all", _fake_ensure_all)

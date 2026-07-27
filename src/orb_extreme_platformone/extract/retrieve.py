@@ -66,7 +66,8 @@ def retrieve_ok(
                 exc,
             )
             continue
-        assert rows is not None
+        if rows is None:
+            continue
         yield context, rows
 
 

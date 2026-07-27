@@ -1,85 +1,23 @@
-"""End-to-end Backend.run() test against the real worker/diode-sdk contracts.
-
-Unlike test_transform.py, this deliberately does NOT stub the Diode SDK -- it
-exercises the real protobuf Entity/Device/Site classes plus the real
-worker.models.Policy/Config, to catch drift against the installed
-netboxlabs-diode-sdk / netboxlabs-orb-worker versions early.
-
-Platform ONE itself is mocked at the HTTP boundary with `responses`
-(client.py talks plain `requests`).
-"""
+"""Backend orchestration, run, degradation, and scope tests."""
 
 from __future__ import annotations
 
 import json
 
-import pytest
 import responses
 from worker.models import Config, Policy
 
-from orb_extreme_platformone.backend import INTERFACE_ID_TABLES, PORT_TABLES, Backend
-from orb_extreme_platformone.client import DEFAULT_BASE_URL, configstate_response_key
-from orb_extreme_platformone.extract.ports import collect_interface_ids
+from orb_extreme_platformone.backend import Backend
+from tests.backend_helpers import (
+    _mock_assets,
+    _mock_cs,
+    _mock_empty_clusters,
+    _mock_empty_port_and_lag_tables,
+    _mock_interface_id_tables_empty,
+    _mock_port_tables_empty,
+    _policy,
+)
 from tests.conftest import CS_SWITCH, SWITCH_ASSET
-
-ASSETS_URL = f"{DEFAULT_BASE_URL}/assets/v1/devices"
-
-
-def _cs_url(table: str) -> str:
-    return f"{DEFAULT_BASE_URL}/configstate/v1/retrieve-{table}"
-
-
-def _mock_assets(devices: list[dict]):
-    responses.add(
-        responses.POST,
-        ASSETS_URL,
-        json={"data": devices, "page": 1, "total_pages": 1, "total_count": len(devices)},
-        status=200,
-    )
-
-
-def _mock_cs(table: str, key: str, records: list[dict], status: int = 200):
-    body = {key: records, "Pagination": {"total_pages": 1}} if status == 200 else {"error": "boom"}
-    responses.add(responses.POST, _cs_url(table), json=body, status=status)
-
-
-def _mock_empty_clusters():
-    """Existing port-focused tests do not care about VC; no InferredDevice rows
-    means the backend skips retrieve-inferred-cluster entirely."""
-    _mock_cs("inferred-device", "InferredDevice", [])
-
-
-def _mock_empty_port_and_lag_tables():
-    """Empty mocks for every PORT_TABLES entry so adding a table cannot drift."""
-    for table, _ in PORT_TABLES.values():
-        _mock_cs(table, configstate_response_key(table), [])
-
-
-def _mock_interface_id_tables_empty():
-    """Empty mocks for interface-IP (fetched when interface UUIDs exist)."""
-    for table, _ in INTERFACE_ID_TABLES.values():
-        _mock_cs(table, configstate_response_key(table), [])
-
-
-def _mock_port_tables_empty():
-    _mock_empty_port_and_lag_tables()
-    _mock_empty_clusters()
-
-
-def _policy(**config_overrides) -> Policy:
-    config = Config(
-        package="orb_extreme_platformone",
-        BOOTSTRAP=False,
-        PLATFORMONE_API_TOKEN="tok",
-        **config_overrides,
-    )
-    return Policy(config=config, scope=config_overrides.get("scope", {"sites": ["*"]}))
-
-
-def test_describe_reports_stable_identity():
-    metadata = Backend.describe()
-    assert metadata.app_name == "netbox-orb-extreme-platformone"
-    assert metadata.name == "orb_extreme_platformone"
 
 
 @responses.activate
@@ -347,6 +285,18 @@ def test_correlate_warns_on_duplicate_serial(caplog):
 
     assert matched[1]["id"] == "a"
     assert "Duplicate ConfigState AssetDevice serial_number" in caplog.text
+
+
+def test_correlate_preserves_string_device_ids():
+    """Assets device_id may arrive as a JSON string; lookup must still work."""
+    from orb_extreme_platformone.extract.correlate import correlate
+
+    assets = [{"device_id": "42", "serial_number": "SN1"}]
+    cs_devices = [{"id": "cs-uuid-1", "serial_number": "SN1"}]
+
+    matched = correlate(assets, cs_devices)
+
+    assert matched["42"]["id"] == "cs-uuid-1"
 
 
 @responses.activate
@@ -637,67 +587,6 @@ def test_run_maps_ap_radios_and_wlans():
     assert [w.ssid for w in radios[0].wireless_lans] == ["Corp"]
     # APs must not trigger switch port retrieves.
     assert not [c for c in responses.calls if "/retrieve-asset-port-config" in c.request.url]
-
-
-def test_collect_interface_ids_includes_vlan_only_interfaces():
-    """VLAN-facing interfaces absent from port/LAG rows must still feed IP/PoE fetches."""
-    tables_by_device = {
-        "cs-uuid-42": {
-            "port_configs": [
-                {"asset_interface_id": "if-port", "name": "1/1"},
-            ],
-            "vlan_properties": [
-                {"asset_interface_id": "if-port", "interface_name": "1/1"},
-                {"asset_interface_id": "if-svi", "interface_name": "vlan10"},
-            ],
-            "lag_configs": [],
-            "lag_states": [],
-            "poe_states": [],
-            "port_states": [],
-            "port_capabilities": [],
-        }
-    }
-
-    mapping = collect_interface_ids(tables_by_device)
-
-    assert mapping == {
-        "if-port": "cs-uuid-42",
-        "if-svi": "cs-uuid-42",
-    }
-
-
-def test_bootstrap_true_without_netbox_creds_fails_closed(monkeypatch):
-    """BOOTSTRAP must not silently no-op when NetBox credentials are missing."""
-    # Credentials fall back to the environment, so clear any ambient values.
-    monkeypatch.delenv("NETBOX_API_URL", raising=False)
-    monkeypatch.delenv("NETBOX_API_TOKEN", raising=False)
-    policy = Policy(
-        config=Config(
-            package="orb_extreme_platformone",
-            BOOTSTRAP=True,
-            PLATFORMONE_API_TOKEN="tok",
-        ),
-        scope={"sites": ["*"]},
-    )
-    with pytest.raises(ValueError, match="BOOTSTRAP is enabled"):
-        list(Backend().run("platformone_worker", policy))
-
-
-def test_cfg_or_env_prefers_explicit_empty_policy_value(monkeypatch):
-    """Empty policy string wins over environment (None alone falls through)."""
-    from orb_extreme_platformone import backend as backend_mod
-
-    monkeypatch.setenv("PLATFORMONE_API_TOKEN", "from-env")
-
-    class _Cfg:
-        PLATFORMONE_API_TOKEN = ""
-
-    assert backend_mod._cfg_or_env(_Cfg(), "PLATFORMONE_API_TOKEN") == ""
-
-    class _Missing:
-        pass
-
-    assert backend_mod._cfg_or_env(_Missing(), "PLATFORMONE_API_TOKEN") == "from-env"
 
 
 @responses.activate

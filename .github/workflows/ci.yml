@@ -20,19 +20,24 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v7
+      # Official Astral action — installs Ruff from uv.lock and runs `ruff check`.
+      - uses: astral-sh/ruff-action@v4.1.0
         with:
+          version-file: uv.lock
+
+      - uses: astral-sh/ruff-action@v4.1.0
+        with:
+          version-file: uv.lock
+          args: format --check
+
+      # No ty-action yet; use setup-uv + locked ty from the project env.
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          enable-cache: true
           python-version: "3.14"
-          cache: pip
 
-      - name: Install package + dev dependencies
-        run: pip install -e ".[dev]"
-
-      - name: Lint (ruff check)
-        run: ruff check .
-
-      - name: Format check (ruff format)
-        run: ruff format --check .
+      - run: uv sync --locked --group dev
+      - run: uv run ty check
 
   test:
     runs-on: ubuntu-latest
@@ -44,16 +49,27 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v7
+      - uses: astral-sh/setup-uv@v9.0.0
         with:
+          enable-cache: true
           python-version: ${{ matrix.python-version }}
-          cache: pip
 
-      - name: Install package + dev dependencies
-        run: pip install -e ".[dev]"
+      - run: uv sync --locked --group dev
+      - run: uv run pytest -v --cov --cov-report=term-missing
 
-      - name: Test (pytest)
-        run: pytest -v
+  package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          enable-cache: true
+          python-version: "3.14"
+
+      - run: uv build
+      - run: uvx twine check dist/*
 
   # There is no scheduled live-spec contract job anymore: the Platform ONE
   # OpenAPI specs sit behind the developer portal's login wall, with no
