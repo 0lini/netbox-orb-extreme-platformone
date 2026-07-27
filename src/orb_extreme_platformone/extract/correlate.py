@@ -101,7 +101,8 @@ def correlated_records(client: PlatformOneClient, assets: list[dict], policy_nam
 
     records = []
     for asset in assets:
-        cs = cs_by_asset_id.get(asset.get("device_id"))
+        asset_id = asset.get("device_id")
+        cs = cs_by_asset_id.get(asset_id) if isinstance(asset_id, int) else None
         cs_device_id = str(cs["id"]) if cs and cs.get("id") else None
         records.append(
             {

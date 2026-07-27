@@ -60,5 +60,5 @@ def test_require_https_url_accepts_http_for_local_dev_hosts(url):
     ],
 )
 def test_require_https_url_rejects_non_https_userinfo_or_hostless(url):
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="TEST_URL"):
         require_https_url(url, what="TEST_URL")

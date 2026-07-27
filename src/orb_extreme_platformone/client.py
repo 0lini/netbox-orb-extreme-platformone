@@ -198,11 +198,16 @@ class PlatformOneClient:
                 detail = truncate_error_body(resp.text)
                 raise PlatformOneApiError(f"Platform ONE API error {resp.status_code} for {path}: {detail}")
             try:
-                return resp.json()
+                payload = resp.json()
             except ValueError as exc:
                 raise PlatformOneApiError(
                     f"Platform ONE API returned invalid JSON for {path}: {exc}"
                 ) from exc
+            if not isinstance(payload, dict):
+                raise PlatformOneApiError(
+                    f"Platform ONE API returned non-object JSON for {path}: {type(payload).__name__}"
+                )
+            return payload
         raise AssertionError("unreachable")  # pragma: no cover
 
     def get_devices(self, *, classification: str = "ALL", limit: int = ASSETS_PAGE_LIMIT) -> Iterator[dict]:
