@@ -35,7 +35,7 @@ Platform ONE (Assets + ConfigState)
 
 | Platform ONE source | NetBox objects |
 |---------------------|----------------|
-| Devices (Assets API) | `Device` — name (Assets `host_name` when present), serial, status (`active`/`offline`; unknown → `active`, Meraki-style), role (from Assets `function` when present; no static default), device type and manufacturer, platform (OS family + version), primary IPv4/IPv6 from ConfigState interface IPs (Assets `ip_address` is match-only), provenance tags, `platformone_device_id` custom field |
+| Devices (Assets API) | `Device` — name (Assets `host_name` when present), serial, status (`active`/`offline`; unknown → `active`, Meraki-style), role (from Assets `function` when present; no static default), device type and manufacturer, platform (OS family + version), primary IPv4/IPv6 from ConfigState interface IPs (Assets `ip_address` is match-only), provenance tags, `platformone_device_id` custom field, plus fabric identity CFs when present (`platformone_isis_area`, `platformone_isis_system_id`, `platformone_spbm_nickname`) |
 | Device locations (ConfigState) | `Site` (optional latitude/longitude) plus a nested `Location` chain (building → floor), falling back to the Assets API's flat site name |
 | Switch ports (ConfigState) | `Interface` — name, admin state (`enabled`), link state (`mark_connected`), speed/duplex (verified codes), `type` (verified codes else `other`), description, MAC (uppercase), `mgmt_only`, `poe_mode` / `poe_type`, untagged/tagged VLANs with 802.1Q `mode`, `platformone_interface_id` custom field |
 | VLAN membership (ConfigState) | Interface `untagged_vlan` / `tagged_vlans` by `vid` with `name=str(vid)` (NetBox requires a name; switch-local names are not site-scoped, so VID is the stable placeholder; named VLAN sync via `retrieve-asset-vlan-config` is not used) |
@@ -60,6 +60,7 @@ ingest; this package only produces entities.
    fields and provenance tags via the NetBox REST API.
 2. **Extract** — list Assets devices, correlate ConfigState devices by
    serial, load locations, then batched ConfigState tables for ports, LAGs,
+   wireless, clusters, and switch fabric identity (ISIS/SPBM).
    wireless/SSID, and inferred clusters (`extract/`).
 3. **Transform** — map correlated records to Diode entities: devices,
    sites/locations, interfaces, IPs, VirtualChassis, radios, WirelessLANs
@@ -99,7 +100,7 @@ they are not separate optional features you turn on or off.
 | Phase | Always? | What is called | Why it waits |
 |-------|---------|----------------|--------------|
 | 1. Inventory | Yes | Assets `POST /assets/v1/devices`; ConfigState `retrieve-asset-device`; `retrieve-asset-location` | — |
-| 2. Switch tables | When switches are in scope | Device-filtered port/LAG/VLAN/capabilities/PoE tables (`retrieve-asset-port-config`, `-port-state`, `-port-capabilities`, `-interface-vlan-properties`, `-lag-config`, `-lag-state`, `-poe-power-ports-state`, `-poe-power-ports-config`). LAG membership comes from nested `member_ports` on lag-config/state rows. | Needs AssetDevice UUIDs from phase 1 |
+| 2. Switch tables | When switches are in scope | Device-filtered port/LAG/VLAN/capabilities/PoE tables (`retrieve-asset-port-config`, `-port-state`, `-port-capabilities`, `-interface-vlan-properties`, `-lag-config`, `-lag-state`, `-poe-power-ports-state`, `-poe-power-ports-config`) plus fabric identity (`retrieve-asset-isis-global-config`, `-isis-global-state`, `-spbm-instance`). LAG membership comes from nested `member_ports` on lag-config/state rows. | Needs AssetDevice UUIDs from phase 1 |
 | 3. Interface extras | When phase 2 collected any `asset_interface_id`s | `retrieve-asset-interface-ip-address` | That table filters by interface UUID only (no device filter), so IDs must come from phase 2 |
 | 4. Wireless | When APs are in scope | `retrieve-asset-wireless-interface`, `-wireless-interface-state`, `-ssid-config`, `-ssid-state` | Needs AssetDevice UUIDs from phase 1 |
 | 5. Clusters | Yes (degrades if empty/fail) | `retrieve-inferred-device`, then `retrieve-inferred-cluster` twice (`device_one_id` / `device_two_id`) | Cluster member filters are InferredDevice UUIDs, not AssetDevice UUIDs |
@@ -114,14 +115,16 @@ It is not a policy knob.
 | `src/orb_extreme_platformone/backend.py` | Orb Agent worker entrypoint: policy tick orchestration (bootstrap → extract → transform). |
 | `src/orb_extreme_platformone/client.py` | Platform ONE HTTP client: `POST /login` (or static token), paginated Assets listing, batched ConfigState `retrieve()`. |
 | `src/orb_extreme_platformone/extract/` | **Extract** — table catalogs, concurrent retrieves, Assets↔ConfigState correlation, port / wireless / cluster phases. |
-| `src/orb_extreme_platformone/extract/tables.py` | ConfigState table catalogs (`PORT_TABLES`, `WIRELESS_TABLES`, LAG/interface filters). |
+| `src/orb_extreme_platformone/extract/tables.py` | ConfigState table catalogs (`PORT_TABLES`, `WIRELESS_TABLES`, `FABRIC_DEVICE_TABLES`, LAG/interface filters). |
 | `src/orb_extreme_platformone/extract/retrieve.py` | Concurrent batched ConfigState retrieves with per-table degradation. |
 | `src/orb_extreme_platformone/extract/correlate.py` | Join Assets devices to ConfigState devices (by serial) and locations. |
 | `src/orb_extreme_platformone/extract/ports.py` | Switch port / LAG / PoE / IP extract phases. |
+| `src/orb_extreme_platformone/extract/fabric.py` | ISIS / SPBM fabric identity extract for Device custom fields. |
 | `src/orb_extreme_platformone/extract/wireless.py` | AP radio / SSID extract phase. |
 | `src/orb_extreme_platformone/extract/clusters.py` | InferredDevice → InferredCluster extract for VirtualChassis. |
 | `src/orb_extreme_platformone/transform/` | **Transform** — Platform ONE records → Diode entities, split by domain. |
 | `src/orb_extreme_platformone/transform/devices.py` | Devices, sites, locations, platforms, roles, primary IP attachment. |
+| `src/orb_extreme_platformone/transform/fabric.py` | ISIS area / system id / SPBM nickname → Device custom fields. |
 | `src/orb_extreme_platformone/transform/ports.py` | Port transform entrypoint and public compatibility exports. |
 | `src/orb_extreme_platformone/transform/physical_ports.py` | Physical port Interface fields, PoE, duplex, VLAN/IP attachment. |
 | `src/orb_extreme_platformone/transform/lags.py` | LAG parent/member Interface mapping. |
@@ -321,6 +324,9 @@ Same `{product}_{attribute}` pattern as Meraki (`meraki_*`) and ACI (`aci_*`) / 
 | `platformone_device_id` | Device | Assets `device_id` (unique) |
 | `platformone_interface_id` | Interface | ConfigState `asset_interface_id` (unique) |
 | `platformone_cluster_id` | VirtualChassis | InferredCluster UUID (unique) |
+| `platformone_isis_area` | Device | ISIS area (`manual_area_address`, else `area_name`, else learned/default area) |
+| `platformone_isis_system_id` | Device | ISIS `sys_id` from `retrieve-asset-isis-global-config` |
+| `platformone_spbm_nickname` | Device | SPBM `node_nick_name` (else ISIS `area_vnode_nickname`) |
 
 ### Assurance-ready output
 

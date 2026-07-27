@@ -78,10 +78,13 @@ def _device_kwargs(
     site_name: str,
     location: Location | None,
     vc_membership: dict | None = None,
+    fabric_fields: dict | None = None,
 ) -> dict:
     custom_fields: dict = {}
     if asset.get("device_id") is not None:
         custom_fields[CF_DEVICE_ID] = _cf_text(str(asset["device_id"]))
+    if fabric_fields:
+        custom_fields.update(fabric_fields)
     kwargs = {
         "serial": asset.get("serial_number") or None,
         "site": Site(name=site_name),
@@ -187,6 +190,7 @@ def devices_to_entities(
     site_scope: set[str] | None = None,
     virtual_chassis_entities: list[Entity] | None = None,
     vc_memberships: dict[str, dict] | None = None,
+    fabric_by_cs_id: dict[str, dict] | None = None,
 ) -> list[Entity]:
     """Map device records to Diode entities: one Site per distinct site, one
     nested Location per Building/Floor level in use, Devices, then
@@ -197,9 +201,11 @@ def devices_to_entities(
     directly with an unscoped list, pass `site_scope` here instead.
 
     `vc_memberships` is keyed by ConfigState device UUID (`cs_device_id`).
-    Primary IPs are applied separately via `primary_ip_device_entities` after
-    Interface/IPAddress entities (see backend tick ordering). Assets
-    `ip_address` is bare and is never asserted as a primary IP.
+    `fabric_by_cs_id` carries optional ISIS/SPBM text custom-field values for
+    the same key. Primary IPs are applied separately via
+    `primary_ip_device_entities` after Interface/IPAddress entities (see
+    backend tick ordering). Assets `ip_address` is bare and is never asserted
+    as a primary IP.
 
     Devices with ``virtual_chassis`` / ``vc_position`` are emitted before the
     first-class VirtualChassis entities that set ``master``. NetBox rejects
@@ -238,11 +244,13 @@ def devices_to_entities(
         location = location_cache.get((site_name, tuple(location_path))) if location_path else None
         cs_device_id = record.get("cs_device_id")
         membership = (vc_memberships or {}).get(cs_device_id) if cs_device_id else None
+        fabric_fields = (fabric_by_cs_id or {}).get(cs_device_id) if cs_device_id else None
         kwargs = _device_kwargs(
             record["asset"],
             site_name=site_name,
             location=location,
             vc_membership=membership,
+            fabric_fields=fabric_fields,
         )
         entities.append(Entity(device=Device(**kwargs)))
 

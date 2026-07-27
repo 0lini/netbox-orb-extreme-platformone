@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Device custom fields for fabric identity: `platformone_isis_area`,
+  `platformone_isis_system_id`, and `platformone_spbm_nickname` (from
+  ConfigState ISIS global config/state and SPBM instance). Re-run bootstrap
+  once so NetBox creates the new field definitions.
+
 ### Changed
 - Adopted `src/` layout, Astral tooling (`uv` / `ruff` / `ty`), and richer packaging metadata.
 - Split port and wireless transform modules (and matching tests) by domain.

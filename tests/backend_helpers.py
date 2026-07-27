@@ -5,7 +5,7 @@ from __future__ import annotations
 import responses
 from worker.models import Config, Policy
 
-from orb_extreme_platformone.backend import INTERFACE_ID_TABLES, PORT_TABLES
+from orb_extreme_platformone.backend import FABRIC_DEVICE_TABLES, INTERFACE_ID_TABLES, PORT_TABLES
 from orb_extreme_platformone.client import DEFAULT_BASE_URL, configstate_response_key
 
 ASSETS_URL = f"{DEFAULT_BASE_URL}/assets/v1/devices"
@@ -35,9 +35,21 @@ def _mock_empty_clusters():
     _mock_cs("inferred-device", "InferredDevice", [])
 
 
-def _mock_empty_port_and_lag_tables():
-    """Empty mocks for every PORT_TABLES entry so adding a table cannot drift."""
+def _mock_empty_port_and_lag_tables(*, include_fabric: bool = True):
+    """Empty mocks for every PORT_TABLES entry so adding a table cannot drift.
+
+    Set ``include_fabric=False`` when a test supplies its own fabric rows
+    (responses matches the first registered mock for a URL).
+    """
     for table, _ in PORT_TABLES.values():
+        _mock_cs(table, configstate_response_key(table), [])
+    if include_fabric:
+        _mock_empty_fabric_tables()
+
+
+def _mock_empty_fabric_tables():
+    """Empty mocks for ISIS/SPBM fabric identity tables."""
+    for table, _ in FABRIC_DEVICE_TABLES.values():
         _mock_cs(table, configstate_response_key(table), [])
 
 

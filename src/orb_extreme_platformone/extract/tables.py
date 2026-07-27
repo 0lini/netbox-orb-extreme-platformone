@@ -35,6 +35,14 @@ WIRELESS_TABLES = {
     "ssid_states": ("asset-ssid-state", "asset_device_id"),
 }
 
+# Fabric (ISIS / SPBM) device-scoped tables → Device text custom fields
+# (area, system id, nickname). Circuit / FIB / adjacency tables are not synced.
+FABRIC_DEVICE_TABLES = {
+    "isis_global_configs": ("asset-isis-global-config", "asset_device_id"),
+    "isis_global_states": ("asset-isis-global-state", "asset_device_id"),
+    "spbm_instances": ("asset-spbm-instance", "asset_device_id"),
+}
+
 # InferredCluster.device_one_id / device_two_id are InferredDevice UUIDs
 # ("User device" in the ConfigState schema), not AssetDevice UUIDs. Resolve
 # AssetDevice -> InferredDevice first, then query both member sides and merge

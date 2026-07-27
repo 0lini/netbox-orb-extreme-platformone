@@ -25,12 +25,14 @@ from . import bootstrap, transform
 from .client import DEFAULT_BASE_URL, PlatformOneApiError, PlatformOneClient
 from .extract import (
     CLUSTER_MEMBER_FILTERS,
+    FABRIC_DEVICE_TABLES,
     INTERFACE_ID_TABLES,
     PORT_TABLES,
     WIRELESS_TABLES,
     correlated_records,
 )
 from .extract.clusters import extract_inferred_clusters
+from .extract.fabric import extract_fabric_tables
 from .extract.ports import extract_port_tables
 from .extract.wireless import extract_wireless_tables
 from .identity import asset_label, device_name, is_ap, is_switch, resolve_location
@@ -54,6 +56,7 @@ __all__ = [
     "APP_VERSION",
     "CLUSTER_MEMBER_FILTERS",
     "DEFAULT_CLASSIFICATION",
+    "FABRIC_DEVICE_TABLES",
     "INTERFACE_ID_TABLES",
     "PORT_TABLES",
     "WIRELESS_TABLES",
@@ -214,10 +217,12 @@ class Backend(WorkerBackend):
         )
 
         vc_entities, vc_memberships = self._virtual_chassis_entities(client, scoped, policy_name)
-        # Port/LAG/IP tables are fetched before Device entities so primary_ip
-        # can use ConfigState interface CIDRs (mask_length) instead of inventing
-        # /32 from the bare Assets management address.
-        port_entities, primary_ips_by_cs_id = self._port_entities(client, scoped, policy_name)
+        # Port/LAG/IP + fabric (ISIS/SPBM) tables are fetched before Device
+        # entities so primary_ip can use ConfigState interface CIDRs and so
+        # Device CFs can carry ISIS area / system id / SPBM nickname.
+        port_entities, primary_ips_by_cs_id, fabric_by_cs_id = self._port_entities(
+            client, scoped, policy_name
+        )
         radio_entities = self._radio_entities(client, scoped, policy_name)
         # Emit Devices *without* primary_ip* first so serial / custom fields are
         # not bundled into a Diode update that NetBox rejects when the IP is not
@@ -226,6 +231,7 @@ class Backend(WorkerBackend):
             scoped,
             virtual_chassis_entities=vc_entities,
             vc_memberships=vc_memberships,
+            fabric_by_cs_id=fabric_by_cs_id,
         )
         entities.extend(port_entities)
         entities.extend(radio_entities)
@@ -287,22 +293,31 @@ class Backend(WorkerBackend):
     @staticmethod
     def _port_entities(
         client: PlatformOneClient, records: list[dict], policy_name: str
-    ) -> tuple[list[Entity], dict[str, dict[str, str]]]:
-        """Fetch port/LAG tables for in-scope switches and map to Diode entities.
+    ) -> tuple[list[Entity], dict[str, dict[str, str]], dict[str, dict]]:
+        """Fetch port/LAG + fabric tables for in-scope switches and map entities.
 
-        Returns ``(port_entities, primary_ips_by_cs_id)`` so Device primary
-        IPs can reuse the same ConfigState interface CIDRs.
+        Returns ``(port_entities, primary_ips_by_cs_id, fabric_by_cs_id)`` so
+        Device primary IPs and ISIS/SPBM custom fields reuse the same switch
+        fan-out.
         """
         switches = _records_by_cs_id(
             records,
             predicate=lambda record: is_switch(record["asset"].get("function")),
         )
         if not switches:
-            return [], {}
+            return [], {}, {}
         device_ids = sorted(switches)
         device_names = _device_names(switches, policy_name=policy_name, kind="ports")
 
         tables_by_device, failed_tables = extract_port_tables(client, device_ids, policy_name)
+        fabric_tables, fabric_failed = extract_fabric_tables(client, device_ids, policy_name)
+        failed_tables.extend(fabric_failed)
+
+        fabric_by_cs_id: dict[str, dict] = {}
+        for device_id, fabric in fabric_tables.items():
+            fields = transform.device_fabric_custom_fields(fabric)
+            if fields:
+                fabric_by_cs_id[device_id] = fields
 
         entities: list[Entity] = []
         primary_ips_by_cs_id: dict[str, dict[str, str]] = {}
@@ -328,8 +343,14 @@ class Backend(WorkerBackend):
                 )
             )
         logger.info("Policy %s: mapped %d wired port entities", policy_name, len(entities))
+        if fabric_by_cs_id:
+            logger.info(
+                "Policy %s: attached fabric custom fields for %d switch(es)",
+                policy_name,
+                len(fabric_by_cs_id),
+            )
         _log_failed_tables(policy_name, failed_tables)
-        return entities, primary_ips_by_cs_id
+        return entities, primary_ips_by_cs_id, fabric_by_cs_id
 
     @staticmethod
     def _radio_entities(client: PlatformOneClient, records: list[dict], policy_name: str) -> list[Entity]:
