@@ -287,6 +287,18 @@ def test_correlate_warns_on_duplicate_serial(caplog):
     assert "Duplicate ConfigState AssetDevice serial_number" in caplog.text
 
 
+def test_correlate_preserves_string_device_ids():
+    """Assets device_id may arrive as a JSON string; lookup must still work."""
+    from orb_extreme_platformone.extract.correlate import correlate
+
+    assets = [{"device_id": "42", "serial_number": "SN1"}]
+    cs_devices = [{"id": "cs-uuid-1", "serial_number": "SN1"}]
+
+    matched = correlate(assets, cs_devices)
+
+    assert matched["42"]["id"] == "cs-uuid-1"
+
+
 @responses.activate
 def test_run_maps_inferred_cluster_to_virtual_chassis():
     switch2 = {**SWITCH_ASSET, "device_id": 43, "host_name": "sw-idf2", "serial_number": "SN43"}

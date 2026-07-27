@@ -41,7 +41,7 @@ def index_unique(items: Iterable[dict], key_fn, *, label: str) -> dict:
     return index
 
 
-def correlate(assets: list[dict], cs_devices: list[dict]) -> dict[int, dict]:
+def correlate(assets: list[dict], cs_devices: list[dict]) -> dict[object, dict]:
     """Match Assets devices to ConfigState AssetDevice records by serial number.
 
     Returns {Assets device_id: ConfigState device record}. Serial number is
@@ -56,7 +56,7 @@ def correlate(assets: list[dict], cs_devices: list[dict]) -> dict[int, dict]:
         label="AssetDevice serial_number",
     )
 
-    matched: dict[int, dict] = {}
+    matched: dict[object, dict] = {}
     for asset in assets:
         serial = str(asset.get("serial_number") or "").casefold()
         cs = by_serial.get(serial) if serial else None
@@ -102,7 +102,9 @@ def correlated_records(client: PlatformOneClient, assets: list[dict], policy_nam
     records = []
     for asset in assets:
         asset_id = asset.get("device_id")
-        cs = cs_by_asset_id.get(asset_id) if isinstance(asset_id, int) else None
+        # Keys are whatever Assets returned for device_id (int or str); do not
+        # coerce/filter by type or string IDs lose ConfigState correlation.
+        cs = cs_by_asset_id.get(asset_id) if asset_id is not None else None
         cs_device_id = str(cs["id"]) if cs and cs.get("id") else None
         records.append(
             {
