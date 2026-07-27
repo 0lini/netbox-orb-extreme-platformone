@@ -109,9 +109,9 @@ Ordered by practical impact:
    tag) for reproducible deploys.
 2. Prefer **env-only secrets** in Orb policy (stop winning from `config:` for
    credential keys) if Orb can guarantee env substitution without YAML values.
-   Runtime deps stay lower-bound in `pyproject.toml`; Renovate opens PRs for
-   updates (see `renovate.json`). A lockfile remains optional for hermetic
-   offline installs.
+   Dev/CI installs are locked via `uv.lock`; Renovate opens PRs for updates
+   (see `renovate.json`). Runtime installs from Orb `workers.txt` still use
+   `pyproject.toml` lower bounds unless you pin a release there.
 
 ---
 

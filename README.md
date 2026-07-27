@@ -221,12 +221,13 @@ Full posture and residual risks: [`SECURITY.md`](SECURITY.md).
 ## Development
 
 ```bash
-pip install -e ".[dev]"
+uv sync --group dev
 export PLATFORMONE_USERNAME=...             # or PLATFORMONE_API_TOKEN=...
 export PLATFORMONE_PASSWORD=...             # or put both in .env (gitignored)
-python -m orb_extreme_platformone           # dry run: extract → transform → print entities
-pytest                                      # offline test suite
-ruff check . && ruff format --check .       # lint + format
+uv run python -m orb_extreme_platformone    # dry run: extract → transform → print entities
+uv run pytest                               # offline test suite
+uv run ruff check . && uv run ruff format --check .
+uv run ty check                             # type check (Astral ty)
 ```
 
 The Orb Agent worker (`netboxlabs-orb-worker`) owns the Diode client and the
