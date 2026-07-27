@@ -37,6 +37,13 @@ def _pick_primary_cidr(candidates: list[tuple[int, str]]) -> dict[str, str]:
     return result
 
 
+_CidrRow = tuple[dict, str, ipaddress.IPv4Interface | ipaddress.IPv6Interface]
+
+
+def _ranked_ip_matches(rows: list[_CidrRow], predicate) -> list[tuple[int, str]]:
+    return [(iface.version, cidr) for row, cidr, iface in rows if predicate(row, iface)]
+
+
 def primary_ips_from_tables(
     tables: dict[str, list[dict]],
     *,
@@ -65,18 +72,16 @@ def primary_ips_from_tables(
     if not rows_with_cidr:
         return {}
 
-    ranked: list[tuple[int, str]] = []
-    for row, cidr, iface in rows_with_cidr:
-        if row.get("is_primary") is True:
-            ranked.append((iface.version, cidr))
+    ranked = _ranked_ip_matches(rows_with_cidr, lambda row, _iface: row.get("is_primary") is True)
     if ranked:
         return _pick_primary_cidr(ranked)
 
     mgmt_ids = _mgmt_interface_ids(tables)
     if mgmt_ids:
-        for row, cidr, iface in rows_with_cidr:
-            if str(row.get("asset_interface_id") or "") in mgmt_ids:
-                ranked.append((iface.version, cidr))
+        ranked = _ranked_ip_matches(
+            rows_with_cidr,
+            lambda row, _iface: str(row.get("asset_interface_id") or "") in mgmt_ids,
+        )
         if ranked:
             return _pick_primary_cidr(ranked)
 
@@ -89,9 +94,7 @@ def primary_ips_from_tables(
         except ValueError:
             asset_address = None
         if asset_address is not None:
-            for _row, cidr, iface in rows_with_cidr:
-                if iface.ip == asset_address:
-                    ranked.append((iface.version, cidr))
+            ranked = _ranked_ip_matches(rows_with_cidr, lambda _row, iface: iface.ip == asset_address)
             if ranked:
                 return _pick_primary_cidr(ranked)
 
@@ -166,10 +169,6 @@ def _orphan_ip_entities(
         if not name:
             continue
         if name not in emitted_names:
-            interface_id = next(
-                (str(row["asset_interface_id"]) for row in rows if row.get("asset_interface_id")),
-                key or None,
-            )
             entities.append(
                 Entity(
                     interface=Interface(
@@ -177,7 +176,7 @@ def _orphan_ip_entities(
                             **_interface_identity_kwargs(
                                 device=device,
                                 name=name,
-                                interface_id=str(interface_id) if interface_id else None,
+                                interface_id=key or None,
                             ),
                             "type": VIRTUAL_INTERFACE_TYPE,
                         }

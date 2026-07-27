@@ -47,6 +47,10 @@ def _wireless_radio_key(row: dict) -> str | None:
     return interface_id or None
 
 
+def _ssid_name(row: dict) -> str:
+    return str(row.get("name") or "").strip()
+
+
 def _radio_interface_kwargs(
     *,
     device,
@@ -175,12 +179,10 @@ def radios_to_entities(
                     _ensure_wlan(wlans, ssid)
 
         encryption_by_ssid = {
-            str(row.get("name") or "").strip(): row.get("encryption")
-            for row in ssid_states
-            if str(row.get("name") or "").strip()
+            _ssid_name(row): row.get("encryption") for row in ssid_states if _ssid_name(row)
         }
         for row in ssid_configs:
-            ssid = str(row.get("name") or "").strip()
+            ssid = _ssid_name(row)
             if not ssid:
                 continue
             _ensure_wlan(
@@ -197,7 +199,7 @@ def radios_to_entities(
                 ssids_by_radio=ssids_by_radio,
             )
         for row in ssid_states:
-            ssid = str(row.get("name") or "").strip()
+            ssid = _ssid_name(row)
             if not ssid:
                 continue
             _ensure_wlan(wlans, ssid, encryption=row.get("encryption"))
