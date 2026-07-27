@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   once so NetBox creates the new field definitions.
 
 ### Changed
+- Simplified shared Device identity construction, client pagination/retrieve chunking, LAG joins, backend port/radio fan-out, and primary-IP ranking helpers (behavior unchanged).
+- Inferred-cluster member-side fetches now run concurrently via the existing parallel retrieve helper.
 - Adopted `src/` layout, Astral tooling (`uv` / `ruff` / `ty`), and richer packaging metadata.
 - Split port and wireless transform modules (and matching tests) by domain.
 - Raised `setuptools` build requirement to `>=77` for PEP 639 license metadata.
