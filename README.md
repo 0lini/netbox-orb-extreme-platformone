@@ -111,25 +111,25 @@ It is not a policy knob.
 
 | Path | Purpose |
 |------|---------|
-| `orb_extreme_platformone/backend.py` | Orb Agent worker entrypoint: policy tick orchestration (bootstrap → extract → transform). |
-| `orb_extreme_platformone/client.py` | Platform ONE HTTP client: `POST /login` (or static token), paginated Assets listing, batched ConfigState `retrieve()`. |
-| `orb_extreme_platformone/extract/` | **Extract** — table catalogs, concurrent retrieves, Assets↔ConfigState correlation, port / wireless / cluster phases. |
-| `orb_extreme_platformone/extract/tables.py` | ConfigState table catalogs (`PORT_TABLES`, `WIRELESS_TABLES`, LAG/interface filters). |
-| `orb_extreme_platformone/extract/retrieve.py` | Concurrent batched ConfigState retrieves with per-table degradation. |
-| `orb_extreme_platformone/extract/correlate.py` | Join Assets devices to ConfigState devices (by serial) and locations. |
-| `orb_extreme_platformone/extract/ports.py` | Switch port / LAG / PoE / IP extract phases. |
-| `orb_extreme_platformone/extract/wireless.py` | AP radio / SSID extract phase. |
-| `orb_extreme_platformone/extract/clusters.py` | InferredDevice → InferredCluster extract for VirtualChassis. |
-| `orb_extreme_platformone/transform/` | **Transform** — Platform ONE records → Diode entities, split by domain. |
-| `orb_extreme_platformone/transform/devices.py` | Devices, sites, locations, platforms, roles, primary IP attachment. |
-| `orb_extreme_platformone/transform/ports.py` | Physical ports, VLANs, PoE, interface IPs, LAG parents/members. |
-| `orb_extreme_platformone/transform/wireless.py` | AP radio Interfaces and WirelessLAN entities. |
-| `orb_extreme_platformone/transform/virtual_chassis.py` | InferredCluster → VirtualChassis + member positions. |
-| `orb_extreme_platformone/transform/common.py` | Shared constants, provenance tags, `CustomFieldValue` helper. |
-| `orb_extreme_platformone/identity.py` | Device naming, switch/AP detection, site/building/floor resolution, device-type model mapping. |
-| `orb_extreme_platformone/bootstrap.py` | Idempotent NetBox schema setup (custom fields and tags). |
-| `orb_extreme_platformone/urls.py` | HTTPS URL validation for Platform ONE and NetBox base URLs. |
-| `orb_extreme_platformone/__main__.py` | Standalone dry-run runner (`python -m orb_extreme_platformone`). |
+| `src/orb_extreme_platformone/backend.py` | Orb Agent worker entrypoint: policy tick orchestration (bootstrap → extract → transform). |
+| `src/orb_extreme_platformone/client.py` | Platform ONE HTTP client: `POST /login` (or static token), paginated Assets listing, batched ConfigState `retrieve()`. |
+| `src/orb_extreme_platformone/extract/` | **Extract** — table catalogs, concurrent retrieves, Assets↔ConfigState correlation, port / wireless / cluster phases. |
+| `src/orb_extreme_platformone/extract/tables.py` | ConfigState table catalogs (`PORT_TABLES`, `WIRELESS_TABLES`, LAG/interface filters). |
+| `src/orb_extreme_platformone/extract/retrieve.py` | Concurrent batched ConfigState retrieves with per-table degradation. |
+| `src/orb_extreme_platformone/extract/correlate.py` | Join Assets devices to ConfigState devices (by serial) and locations. |
+| `src/orb_extreme_platformone/extract/ports.py` | Switch port / LAG / PoE / IP extract phases. |
+| `src/orb_extreme_platformone/extract/wireless.py` | AP radio / SSID extract phase. |
+| `src/orb_extreme_platformone/extract/clusters.py` | InferredDevice → InferredCluster extract for VirtualChassis. |
+| `src/orb_extreme_platformone/transform/` | **Transform** — Platform ONE records → Diode entities, split by domain. |
+| `src/orb_extreme_platformone/transform/devices.py` | Devices, sites, locations, platforms, roles, primary IP attachment. |
+| `src/orb_extreme_platformone/transform/ports.py` | Physical ports, VLANs, PoE, interface IPs, LAG parents/members. |
+| `src/orb_extreme_platformone/transform/wireless.py` | AP radio Interfaces and WirelessLAN entities. |
+| `src/orb_extreme_platformone/transform/virtual_chassis.py` | InferredCluster → VirtualChassis + member positions. |
+| `src/orb_extreme_platformone/transform/common.py` | Shared constants, provenance tags, `CustomFieldValue` helper. |
+| `src/orb_extreme_platformone/identity.py` | Device naming, switch/AP detection, site/building/floor resolution, device-type model mapping. |
+| `src/orb_extreme_platformone/bootstrap.py` | Idempotent NetBox schema setup (custom fields and tags). |
+| `src/orb_extreme_platformone/urls.py` | HTTPS URL validation for Platform ONE and NetBox base URLs. |
+| `src/orb_extreme_platformone/__main__.py` | Standalone dry-run runner (`python -m orb_extreme_platformone`). |
 | `agent.yaml` | Example Orb Agent policy. |
 | `workers.txt` | Packages Orb installs at container start (`INSTALL_WORKERS_PATH`). |
 | `tests/` | Offline pytest suite, plus opt-in OpenAPI contract checks. |
