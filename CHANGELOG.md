@@ -20,6 +20,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Split port and wireless transform modules (and matching tests) by domain.
 - Raised `setuptools` build requirement to `>=77` for PEP 639 license metadata.
 - Example Orb Agent image pin: `netboxlabs/orb-agent:2.11.0` (was `:latest`).
+- Stricter CI: broader Ruff rule set, coverage floor 90%, ty warnings-as-errors,
+  pytest `--strict-markers`/`--strict-config`, and package smoke gated on lint+tests.
 
 ### Fixed
 - ConfigState correlation no longer drops non-int Assets `device_id` values.

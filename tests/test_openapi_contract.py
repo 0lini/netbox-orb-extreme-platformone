@@ -56,9 +56,10 @@ def test_assets_devices_endpoint_and_params_still_exist(assets_spec):
     post = assets_spec["paths"]["/devices"]["post"]
     param_names = set()
     for param in post.get("parameters", []):
+        resolved = param
         if "$ref" in param:
-            param = assets_spec["components"]["parameters"][param["$ref"].rsplit("/", 1)[-1]]
-        param_names.add(param["name"])
+            resolved = assets_spec["components"]["parameters"][param["$ref"].rsplit("/", 1)[-1]]
+        param_names.add(resolved["name"])
     assert {"page", "limit"} <= param_names
 
 

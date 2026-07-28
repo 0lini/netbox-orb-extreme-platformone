@@ -311,9 +311,7 @@ class PlatformOneClient:
                 errors: list[PlatformOneApiError] = []
                 completed = 0
                 for chunk in chunks:
-                    result = self._retrieve_chunk(
-                        table, {**filters, field: chunk}, page_size=page_size
-                    )
+                    result = self._retrieve_chunk(table, {**filters, field: chunk}, page_size=page_size)
                     if isinstance(result, PlatformOneApiError):
                         errors.append(result)
                         logger.warning(

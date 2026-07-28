@@ -11,6 +11,7 @@ import json
 import logging
 import os
 from datetime import timezone
+from pathlib import Path
 
 from google.protobuf.json_format import MessageToDict
 from worker.models import Config, Policy
@@ -28,12 +29,12 @@ def _env_bool(name: str, default: bool = False) -> bool:
 def _load_env_file(path: str = ".env") -> None:
     """Read KEY=VALUE lines into os.environ; exported variables take precedence."""
     try:
-        with open(path, encoding="utf-8") as handle:
+        with Path(path).open(encoding="utf-8") as handle:
             lines = handle.readlines()
     except OSError:
         return
-    for line in lines:
-        line = line.strip()
+    for raw_line in lines:
+        line = raw_line.strip()
         if not line or line.startswith("#") or "=" not in line:
             continue
         key, _, value = line.partition("=")

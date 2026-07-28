@@ -83,7 +83,7 @@ version = {attr = "orb_extreme_platformone._version.__version__"}
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-m 'not contract'"
+addopts = "-m 'not contract' --strict-markers --strict-config"
 markers = [
     "contract: checks locally downloaded Platform ONE OpenAPI specs (excluded by default; run with `pytest -m contract`, see tests/test_openapi_contract.py)",
 ]
@@ -96,7 +96,7 @@ omit = ["*/orb_extreme_platformone/__main__.py"]
 [tool.coverage.report]
 show_missing = true
 skip_covered = true
-fail_under = 80
+fail_under = 90
 exclude_also = ["if TYPE_CHECKING:", "raise AttributeError"]
 
 [tool.ruff]
@@ -120,6 +120,38 @@ select = [
     "C90",
     "PERF",
     "RUF",
+    # Extra strictness (currently clean or fixed alongside this change).
+    "A",
+    "ASYNC",
+    "BLE",
+    "DTZ",
+    "ERA",
+    "EXE",
+    "FA",
+    "FLY",
+    "FURB",
+    "G",
+    "ICN",
+    "INP",
+    "LOG",
+    "N",
+    "PIE",
+    "PGH",
+    "PLC",
+    "PLE",
+    "PLW",
+    "PTH",
+    "PYI",
+    "Q",
+    "RET",
+    "RSE",
+    "SLOT",
+    "T10",
+    "T20",
+    "TID",
+    "YTT",
+    # Selected pylint-refactor rules (not the noisy PLR09xx complexity set).
+    "PLR1714",
 ]
 ignore = [
     # Orb/Diode entity builders intentionally use many locals/branches.
@@ -129,6 +161,8 @@ ignore = [
     # Domain docs use en-dashes in VLAN ranges (4060–4094); keep readable prose.
     "RUF002",
     "RUF003",
+    # Lazy imports are intentional (package __init__, test fixtures, SDK stubs).
+    "PLC0415",
 ]
 
 [tool.ruff.lint.isort]
@@ -139,8 +173,8 @@ known-first-party = ["orb_extreme_platformone"]
 # effect, not read in the test body -- the standard pytest fixture pattern.
 # Test doubles intentionally pass placeholder tokens/passwords.
 "tests/*" = ["ARG001", "S101", "S106", "RUF015"]
-# Standalone dry-run CLI reads a local .env by design.
-"src/orb_extreme_platformone/__main__.py" = ["S104"]
+# Standalone dry-run CLI reads a local .env by design and prints entity JSON.
+"src/orb_extreme_platformone/__main__.py" = ["S104", "T201"]
 # Timeout is always injected via kwargs.setdefault before the request call.
 "src/orb_extreme_platformone/bootstrap.py" = ["S113"]
 
@@ -159,6 +193,9 @@ root = ["./src"]
 [tool.ty.src]
 # Package sources only — pytest fixtures are not part of the typed public API.
 exclude = ["tests/**", "**/test_*.py"]
+
+[tool.ty.terminal]
+error-on-warning = true
 
 [tool.ty.analysis]
 # Diode/Orb SDK stubs are incomplete or mix protobuf wrappers with Python types.

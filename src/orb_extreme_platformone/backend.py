@@ -99,7 +99,7 @@ def _scope_sites(scope) -> list[str] | None:
     if not isinstance(scope, dict):
         return None
     sites = scope.get("sites")
-    if sites is None or sites == [] or sites == ["*"] or sites == "*":
+    if sites in (None, [], ["*"], "*"):
         return None
     if isinstance(sites, str):
         logger.warning("Ignoring invalid policy scope.sites string %r; syncing all sites", sites)

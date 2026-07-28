@@ -232,7 +232,7 @@ export PLATFORMONE_PASSWORD=...             # or put both in .env (gitignored)
 uv run python -m orb_extreme_platformone    # dry run: extract → transform → print entities
 uv run pytest                               # offline test suite
 uv run ruff check . && uv run ruff format --check .
-uv run ty check                             # type check (Astral ty)
+uv run ty check --error-on-warning          # type check (Astral ty; warnings fail)
 ```
 
 The Orb Agent worker (`netboxlabs-orb-worker`) owns the Diode client and the
