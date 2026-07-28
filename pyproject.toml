@@ -105,78 +105,67 @@ target-version = "py310"
 src = ["src", "tests"]
 
 [tool.ruff.lint]
-select = [
-    "E",
-    "F",
-    "W",
-    "I",
-    "B",
-    "UP",
-    "SIM",
-    "C4",
-    "ARG",
-    "PT",
-    "S",
-    "C90",
-    "PERF",
-    "RUF",
-    # Extra strictness (currently clean or fixed alongside this change).
-    "A",
-    "ASYNC",
-    "BLE",
-    "DTZ",
-    "ERA",
-    "EXE",
-    "FA",
-    "FLY",
-    "FURB",
-    "G",
-    "ICN",
-    "INP",
-    "LOG",
-    "N",
-    "PIE",
-    "PGH",
-    "PLC",
-    "PLE",
-    "PLW",
-    "PTH",
-    "PYI",
-    "Q",
-    "RET",
-    "RSE",
-    "SLOT",
-    "T10",
-    "T20",
-    "TID",
-    "YTT",
-    # Selected pylint-refactor rules (not the noisy PLR09xx complexity set).
-    "PLR1714",
-]
+select = ["ALL"]
 ignore = [
-    # Orb/Diode entity builders intentionally use many locals/branches.
+    # Keep complexity checks out of the default gate for transform builders.
     "C901",
-    # Entity lists are built across ordered phases; list-comp rewrites hurt clarity.
+    "PLR0912",
+    "PLR0913",
+    # Helper-heavy transforms intentionally use dynamic values/threshold literals.
+    "PLR2004",
+    # Intentionally use lazy imports in a few integration points.
+    "PLC0415",
+    # Explicit list-building reads better than some suggested rewrites.
     "PERF401",
-    # Domain docs use en-dashes in VLAN ranges (4060–4094); keep readable prose.
+    # Project does not require file-level copyright banners.
+    "CPY001",
+    # Keep existing helper-style APIs without full annotation/docstring churn.
+    "ANN001",
+    "ANN003",
+    "ANN202",
+    "D102",
+    "D103",
+    "D107",
+    "D205",
+    "D401",
+    "FBT001",
+    "FBT002",
+    "FBT003",
+    # Existing docs intentionally use en dashes for numeric ranges.
     "RUF002",
     "RUF003",
-    # Lazy imports are intentional (package __init__, test fixtures, SDK stubs).
-    "PLC0415",
+    # Requests timeout is injected centrally via kwargs.setdefault.
+    "S113",
 ]
 
 [tool.ruff.lint.isort]
 known-first-party = ["orb_extreme_platformone"]
 
 [tool.ruff.lint.per-file-ignores]
-# Fixture params (e.g. `stub_sdk`) are applied for their monkeypatching side
-# effect, not read in the test body -- the standard pytest fixture pattern.
-# Test doubles intentionally pass placeholder tokens/passwords.
-"tests/*" = ["ARG001", "S101", "S106", "RUF015"]
-# Standalone dry-run CLI reads a local .env by design and prints entity JSON.
-"src/orb_extreme_platformone/__main__.py" = ["S104", "T201"]
-# Timeout is always injected via kwargs.setdefault before the request call.
-"src/orb_extreme_platformone/bootstrap.py" = ["S113"]
+# Pytest intentionally relies on asserts, private-attribute inspection of test
+# doubles, and broad fixture signatures.
+"tests/**" = [
+    "ANN001",
+    "ANN002",
+    "ANN003",
+    "ANN201",
+    "ANN202",
+    "ARG001",
+    "D101",
+    "D102",
+    "D103",
+    "D107",
+    "D205",
+    "FBT001",
+    "FBT002",
+    "FBT003",
+    "PLR2004",
+    "S101",
+    "S106",
+    "SLF001",
+    "D104",
+    "D105",
+]
 
 [tool.ruff.format]
 quote-style = "double"

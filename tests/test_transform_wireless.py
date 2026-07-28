@@ -10,11 +10,11 @@ from tests.conftest import cf
 from tests.transform_helpers import _wireless_tables
 
 
-def test_wireless_entity_table_keys_match_backend_extracts():
+def test_wireless_entity_table_keys_match_backend_extracts() -> None:
     assert frozenset(WIRELESS_TABLES) == transform.WIRELESS_ENTITY_TABLE_KEYS
 
 
-def test_radios_to_entities_maps_native_rf_fields_and_wlans(stub_sdk):
+def test_radios_to_entities_maps_native_rf_fields_and_wlans(stub_sdk) -> None:
     tables = _wireless_tables(
         state={
             "band": "5GHz",
@@ -63,7 +63,7 @@ def test_radios_to_entities_maps_native_rf_fields_and_wlans(stub_sdk):
     assert cf(radio["custom_fields"]["platformone_interface_id"]._kw) == "radio-uuid-1"
 
 
-def test_radios_to_entities_leaves_unverified_rf_codes_unset(stub_sdk):
+def test_radios_to_entities_leaves_unverified_rf_codes_unset(stub_sdk) -> None:
     tables = _wireless_tables(
         interface_id="radio-uuid-2",
         name="wifi1",
@@ -86,7 +86,7 @@ def test_radios_to_entities_leaves_unverified_rf_codes_unset(stub_sdk):
     assert "rf_channel_width" not in radio
 
 
-def test_radios_to_entities_omits_type_when_wireless_state_missing(stub_sdk):
+def test_radios_to_entities_omits_type_when_wireless_state_missing(stub_sdk) -> None:
     """Config-only radios omit type (and RF/WLAN links) so state degrade is safe."""
     tables = _wireless_tables(
         interface_id="radio-1",
@@ -106,7 +106,7 @@ def test_radios_to_entities_omits_type_when_wireless_state_missing(stub_sdk):
     assert radio["device"]._kw["name"] == "ap-lobby"
 
 
-def test_radios_to_entities_omits_type_when_state_lacks_radio_mode(stub_sdk):
+def test_radios_to_entities_omits_type_when_state_lacks_radio_mode(stub_sdk) -> None:
     """A state row without radio_mode omits type; RF/WLAN stay gated off."""
     tables = _wireless_tables(
         interface_id="radio-1",
@@ -128,7 +128,7 @@ def test_radios_to_entities_omits_type_when_state_lacks_radio_mode(stub_sdk):
     assert "wireless_lans" not in radio
 
 
-def test_radios_to_entities_warns_on_duplicate_wireless_config(stub_sdk, caplog):
+def test_radios_to_entities_warns_on_duplicate_wireless_config(stub_sdk, caplog) -> None:
     """Duplicate wireless_interfaces rows share join key; first-row wins like ports."""
     base = _wireless_tables(
         interface_id="radio-1",
@@ -157,7 +157,7 @@ def test_radios_to_entities_warns_on_duplicate_wireless_config(stub_sdk, caplog)
     assert "Multiple wireless_interfaces rows share join key" in caplog.text
 
 
-def test_radios_to_entities_uses_first_nonempty_state_for_rf(stub_sdk):
+def test_radios_to_entities_uses_first_nonempty_state_for_rf(stub_sdk) -> None:
     """Empty leading state rows must not hide name/RF fields from a later state row."""
     tables = {
         "cs-ap-1": {
@@ -166,7 +166,7 @@ def test_radios_to_entities_uses_first_nonempty_state_for_rf(stub_sdk):
                     "asset_device_id": "cs-ap-1",
                     "asset_interface_id": "radio-1",
                     "enabled": True,
-                }
+                },
             ],
             "wireless_states": [
                 {},
@@ -181,7 +181,7 @@ def test_radios_to_entities_uses_first_nonempty_state_for_rf(stub_sdk):
             ],
             "ssid_configs": [],
             "ssid_states": [],
-        }
+        },
     }
     radio = next(
         e._kw["interface"]._kw
@@ -194,7 +194,7 @@ def test_radios_to_entities_uses_first_nonempty_state_for_rf(stub_sdk):
     assert radio["wireless_lans"] == ["Corp"]
 
 
-def test_radios_to_entities_enriches_nested_device_ref(stub_sdk):
+def test_radios_to_entities_enriches_nested_device_ref(stub_sdk) -> None:
     tables = _wireless_tables(interface_id="radio-1", state={"radio_mode": "_11ax_5g"})
     radio = (
         transform.radios_to_entities(
@@ -205,7 +205,7 @@ def test_radios_to_entities_enriches_nested_device_ref(stub_sdk):
                     "site_name": "HQ",
                     "function": "AP",
                     "product_type": "AP5050U",
-                }
+                },
             },
         )[0]
         ._kw["interface"]
@@ -218,7 +218,7 @@ def test_radios_to_entities_enriches_nested_device_ref(stub_sdk):
     assert device["device_type"]._kw["model"] == "AP5050U"
 
 
-def test_radios_to_entities_skips_devices_missing_from_device_names(stub_sdk):
+def test_radios_to_entities_skips_devices_missing_from_device_names(stub_sdk) -> None:
     tables = _wireless_tables(interface_id="r1", enabled=None)
     assert transform.radios_to_entities(tables, device_names={}) == []
 
@@ -230,7 +230,9 @@ def test_radios_to_entities_skips_devices_missing_from_device_names(stub_sdk):
         ("BAND_2_4_GHZ", 1, "_11ax_2g", 2412.0),
     ],
 )
-def test_radios_to_entities_accepts_band_enum_style_labels(stub_sdk, band, channel, radio_mode, expected_mhz):
+def test_radios_to_entities_accepts_band_enum_style_labels(
+    stub_sdk, band, channel, radio_mode, expected_mhz,
+) -> None:
     tables = _wireless_tables(
         state={"band": band, "channel": channel, "channel_width": 20, "radio_mode": radio_mode},
     )
@@ -251,7 +253,9 @@ def test_radios_to_entities_accepts_band_enum_style_labels(stub_sdk, band, chann
         ("WEP", "wep", "wep"),
     ],
 )
-def test_radios_to_entities_maps_ssid_encryption_to_auth(stub_sdk, encryption, auth_type, auth_cipher):
+def test_radios_to_entities_maps_ssid_encryption_to_auth(
+    stub_sdk, encryption, auth_type, auth_cipher,
+) -> None:
     ssid_state = {"asset_device_id": "cs-ap-1", "name": "Corp", "if_names": "wifi0", "encryption": encryption}
     tables = {
         "cs-ap-1": {
@@ -259,7 +263,7 @@ def test_radios_to_entities_maps_ssid_encryption_to_auth(stub_sdk, encryption, a
             "wireless_states": [],
             "ssid_configs": [{"asset_device_id": "cs-ap-1", "name": "Corp", "enabled": True}],
             "ssid_states": [ssid_state],
-        }
+        },
     }
     wlan = (
         transform.radios_to_entities(tables, device_names={"cs-ap-1": "ap-lobby"})[0]._kw["wireless_lan"]._kw
@@ -268,7 +272,7 @@ def test_radios_to_entities_maps_ssid_encryption_to_auth(stub_sdk, encryption, a
     assert wlan["auth_cipher"] == auth_cipher
 
 
-def test_radios_to_entities_omits_auth_and_status_when_unknown(stub_sdk):
+def test_radios_to_entities_omits_auth_and_status_when_unknown(stub_sdk) -> None:
     """Missing enabled/encryption must not invent active/open/auto."""
     tables = {
         "cs-ap-1": {
@@ -276,7 +280,7 @@ def test_radios_to_entities_omits_auth_and_status_when_unknown(stub_sdk):
             "wireless_states": [],
             "ssid_configs": [{"asset_device_id": "cs-ap-1", "name": "Corp", "if_names": "wifi0"}],
             "ssid_states": [{"asset_device_id": "cs-ap-1", "name": "Corp"}],
-        }
+        },
     }
 
     wlan = (
@@ -288,14 +292,14 @@ def test_radios_to_entities_omits_auth_and_status_when_unknown(stub_sdk):
     assert "auth_cipher" not in wlan
 
 
-def test_radios_to_entities_omits_auth_for_unrecognized_encryption(stub_sdk):
+def test_radios_to_entities_omits_auth_for_unrecognized_encryption(stub_sdk) -> None:
     tables = {
         "cs-ap-1": {
             "wireless_interfaces": [],
             "wireless_states": [],
             "ssid_configs": [{"asset_device_id": "cs-ap-1", "name": "Corp", "enabled": True}],
             "ssid_states": [{"asset_device_id": "cs-ap-1", "name": "Corp", "encryption": "MYSTERY_SUITE"}],
-        }
+        },
     }
     wlan = (
         transform.radios_to_entities(tables, device_names={"cs-ap-1": "ap-lobby"})[0]._kw["wireless_lan"]._kw
@@ -305,27 +309,27 @@ def test_radios_to_entities_omits_auth_for_unrecognized_encryption(stub_sdk):
     assert "auth_cipher" not in wlan
 
 
-def test_radios_to_entities_merges_ssid_enabled_across_aps(stub_sdk, caplog):
+def test_radios_to_entities_merges_ssid_enabled_across_aps(stub_sdk, caplog) -> None:
     """Same SSID on two APs: enabled is OR'd; conflicting encryption keeps first."""
     tables = {
         "cs-ap-1": {
             "wireless_interfaces": [],
             "wireless_states": [],
             "ssid_configs": [
-                {"asset_device_id": "cs-ap-1", "name": "Guest", "enabled": False, "if_names": "wifi0"}
+                {"asset_device_id": "cs-ap-1", "name": "Guest", "enabled": False, "if_names": "wifi0"},
             ],
             "ssid_states": [
-                {"asset_device_id": "cs-ap-1", "name": "Guest", "encryption": "OPEN", "if_names": "wifi0"}
+                {"asset_device_id": "cs-ap-1", "name": "Guest", "encryption": "OPEN", "if_names": "wifi0"},
             ],
         },
         "cs-ap-2": {
             "wireless_interfaces": [],
             "wireless_states": [],
             "ssid_configs": [
-                {"asset_device_id": "cs-ap-2", "name": "Guest", "enabled": True, "if_names": "wifi0"}
+                {"asset_device_id": "cs-ap-2", "name": "Guest", "enabled": True, "if_names": "wifi0"},
             ],
             "ssid_states": [
-                {"asset_device_id": "cs-ap-2", "name": "Guest", "encryption": "PSK", "if_names": "wifi0"}
+                {"asset_device_id": "cs-ap-2", "name": "Guest", "encryption": "PSK", "if_names": "wifi0"},
             ],
         },
     }

@@ -29,7 +29,7 @@ INFERRED_CLUSTER = {
 }
 
 
-def test_virtual_chassis_to_entities_maps_inferred_cluster(stub_sdk):
+def test_virtual_chassis_to_entities_maps_inferred_cluster(stub_sdk) -> None:
     records_by_cs_id = {
         "cs-uuid-42": _record(),
         "cs-uuid-43": _record(asset=SWITCH_ASSET_PEER, cs_device_id="cs-uuid-43"),
@@ -60,7 +60,7 @@ def test_virtual_chassis_to_entities_maps_inferred_cluster(stub_sdk):
     }
 
 
-def test_virtual_chassis_to_entities_skips_partial_clusters(stub_sdk):
+def test_virtual_chassis_to_entities_skips_partial_clusters(stub_sdk) -> None:
     """Both members must be in scope; a half-known pair is skipped."""
     entities, memberships = transform.virtual_chassis_to_entities(
         [INFERRED_CLUSTER],
@@ -71,7 +71,7 @@ def test_virtual_chassis_to_entities_skips_partial_clusters(stub_sdk):
     assert memberships == {}
 
 
-def test_virtual_chassis_falls_back_to_device_names_without_peer_names(stub_sdk):
+def test_virtual_chassis_falls_back_to_device_names_without_peer_names(stub_sdk) -> None:
     cluster = {
         "id": "cluster-uuid-2",
         "device_one_id": "cs-uuid-42",
@@ -91,9 +91,10 @@ def test_virtual_chassis_falls_back_to_device_names_without_peer_names(stub_sdk)
     assert memberships["cs-uuid-42"]["name"] == "sw-idf1 / sw-idf2"
 
 
-def test_virtual_chassis_ignores_identical_placeholder_peer_names(stub_sdk):
+def test_virtual_chassis_ignores_identical_placeholder_peer_names(stub_sdk) -> None:
     """Fabric often reports peer_name 'Default' on both members -- that must not
-    become the NetBox VirtualChassis name for every cluster."""
+    become the NetBox VirtualChassis name for every cluster.
+    """
     cluster = {
         **INFERRED_CLUSTER,
         "device_one_peer_name": "Default",
@@ -109,7 +110,7 @@ def test_virtual_chassis_ignores_identical_placeholder_peer_names(stub_sdk):
     assert entities[0]._kw["virtual_chassis"]._kw["name"] == "sw-idf1 / sw-idf2"
 
 
-def test_virtual_chassis_warns_on_duplicate_computed_names(stub_sdk, caplog):
+def test_virtual_chassis_warns_on_duplicate_computed_names(stub_sdk, caplog) -> None:
     """Colliding human names are emitted as-is (no invented suffix).
 
     NetBox does not unique VirtualChassis.name; identity is the unique
@@ -155,9 +156,10 @@ def test_virtual_chassis_warns_on_duplicate_computed_names(stub_sdk, caplog):
     assert "platformone_cluster_id" in caplog.text
 
 
-def test_devices_to_entities_attaches_virtual_chassis_membership(stub_sdk):
+def test_devices_to_entities_attaches_virtual_chassis_membership(stub_sdk) -> None:
     """Membership Devices before VirtualChassis.master — NetBox rejects a
-    master that is not yet assigned to the chassis on fresh create."""
+    master that is not yet assigned to the chassis on fresh create.
+    """
     peer = _record(asset=SWITCH_ASSET_PEER, cs_device_id="cs-uuid-43")
     vc_entities, memberships = transform.virtual_chassis_to_entities(
         [INFERRED_CLUSTER],

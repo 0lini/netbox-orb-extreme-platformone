@@ -75,5 +75,6 @@ def extract_inferred_clusters(client: PlatformOneClient, asset_device_ids: list[
     if failures == len(CLUSTER_MEMBER_FILTERS):
         # Both sides failed — surface as a hard extract error so backend can
         # degrade the whole VC phase (same as the previous all-or-nothing path).
-        raise PlatformOneApiError("ConfigState inferred-cluster fetch failed on both member filters")
+        msg = "ConfigState inferred-cluster fetch failed on both member filters"
+        raise PlatformOneApiError(msg)
     return [by_id[key] for key in sorted(by_id)]

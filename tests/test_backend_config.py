@@ -9,13 +9,13 @@ from orb_extreme_platformone.backend import Backend
 from orb_extreme_platformone.extract.ports import collect_interface_ids
 
 
-def test_describe_reports_stable_identity():
+def test_describe_reports_stable_identity() -> None:
     metadata = Backend.describe()
     assert metadata.app_name == "netbox-orb-extreme-platformone"
     assert metadata.name == "orb_extreme_platformone"
 
 
-def test_collect_interface_ids_includes_vlan_only_interfaces():
+def test_collect_interface_ids_includes_vlan_only_interfaces() -> None:
     """VLAN-facing interfaces absent from port/LAG rows must still feed IP/PoE fetches."""
     tables_by_device = {
         "cs-uuid-42": {
@@ -31,7 +31,7 @@ def test_collect_interface_ids_includes_vlan_only_interfaces():
             "poe_states": [],
             "port_states": [],
             "port_capabilities": [],
-        }
+        },
     }
 
     mapping = collect_interface_ids(tables_by_device)
@@ -42,7 +42,7 @@ def test_collect_interface_ids_includes_vlan_only_interfaces():
     }
 
 
-def test_bootstrap_true_without_netbox_creds_fails_closed(monkeypatch):
+def test_bootstrap_true_without_netbox_creds_fails_closed(monkeypatch) -> None:
     """BOOTSTRAP must not silently no-op when NetBox credentials are missing."""
     # Credentials fall back to the environment, so clear any ambient values.
     monkeypatch.delenv("NETBOX_API_URL", raising=False)
@@ -59,7 +59,7 @@ def test_bootstrap_true_without_netbox_creds_fails_closed(monkeypatch):
         list(Backend().run("platformone_worker", policy))
 
 
-def test_cfg_or_env_prefers_explicit_empty_policy_value(monkeypatch):
+def test_cfg_or_env_prefers_explicit_empty_policy_value(monkeypatch) -> None:
     """Empty policy string wins over environment (None alone falls through)."""
     from orb_extreme_platformone import backend as backend_mod
 

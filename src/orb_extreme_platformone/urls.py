@@ -49,17 +49,22 @@ def require_https_url(url: str, *, what: str) -> str:
     cleaned = (url or "").strip().rstrip("/")
     parsed = urlparse(cleaned)
     if not parsed.netloc:
-        raise ValueError(f"{what} must be an https:// URL with a host")
+        msg = f"{what} must be an https:// URL with a host"
+        raise ValueError(msg)
     # urlparse puts userinfo in .username/.password; also reject raw "@"
     # in netloc so "https://legit@evil.com" cannot slip through.
     if parsed.username is not None or parsed.password is not None or "@" in parsed.netloc:
-        raise ValueError(f"{what} must not include userinfo (user:pass@host)")
+        msg = f"{what} must not include userinfo (user:pass@host)"
+        raise ValueError(msg)
     if parsed.query or parsed.fragment:
-        raise ValueError(f"{what} must not include a query string or fragment")
+        msg = f"{what} must not include a query string or fragment"
+        raise ValueError(msg)
     hostname = parsed.hostname
     if not hostname:
-        raise ValueError(f"{what} must be an https:// URL with a host")
+        msg = f"{what} must be an https:// URL with a host"
+        raise ValueError(msg)
 
     if parsed.scheme == "https" or (parsed.scheme == "http" and _is_local_dev_host(hostname)):
         return cleaned
-    raise ValueError(f"{what} must be an https:// URL with a host")
+    msg = f"{what} must be an https:// URL with a host"
+    raise ValueError(msg)

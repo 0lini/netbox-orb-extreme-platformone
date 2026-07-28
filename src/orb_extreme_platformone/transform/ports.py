@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from netboxlabs.diode.sdk.ingester import Entity
+from typing import TYPE_CHECKING
 
 from orb_extreme_platformone.identity import SLASH_PORT_FUNCTIONS
 
@@ -12,6 +12,9 @@ from .lags import _lag_entities
 from .physical_ports import _physical_port_entities
 from .port_constants import PORT_ENTITY_TABLE_KEYS
 from .port_join import _by_key, _capabilities_by_port, _native_port_name_tables
+
+if TYPE_CHECKING:
+    from netboxlabs.diode.sdk.ingester import Entity
 
 __all__ = [
     "PORT_ENTITY_TABLE_KEYS",
@@ -106,6 +109,6 @@ def ports_to_entities(
             interface_ips=interface_ips,
             emitted_keys=emitted_keys,
             interface_names=_interface_names_by_id(tables),
-        )
+        ),
     )
     return entities

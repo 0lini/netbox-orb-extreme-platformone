@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
-from orb_extreme_platformone.client import PlatformOneClient
+from typing import TYPE_CHECKING
 
 from .retrieve import extract_device_table_buckets
 from .tables import FABRIC_DEVICE_TABLES
+
+if TYPE_CHECKING:
+    from orb_extreme_platformone.client import PlatformOneClient
 
 
 def extract_fabric_tables(

@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib
 import importlib.metadata
 from importlib.metadata import PackageNotFoundError
+from typing import NoReturn
 from unittest.mock import MagicMock
 
 import pytest
@@ -40,7 +41,7 @@ ASSETS_URL = f"{DEFAULT_BASE_URL}/assets/v1/devices"
 LOGIN_URL = f"{DEFAULT_BASE_URL}/login"
 
 
-def test_package_lazy_backend_and_dir():
+def test_package_lazy_backend_and_dir() -> None:
     import orb_extreme_platformone as pkg
 
     assert pkg.Backend.__name__ == "Backend"
@@ -49,7 +50,7 @@ def test_package_lazy_backend_and_dir():
         _ = pkg.nope
 
 
-def test_app_version_falls_back_when_distribution_missing(monkeypatch):
+def test_app_version_falls_back_when_distribution_missing(monkeypatch) -> None:
     monkeypatch.setattr(
         importlib.metadata,
         "version",
@@ -77,16 +78,16 @@ def test_app_version_falls_back_when_distribution_missing(monkeypatch):
         ({"sites": 123}, None),
     ],
 )
-def test_scope_sites_normalizes_policy_scope(scope, expected):
+def test_scope_sites_normalizes_policy_scope(scope, expected) -> None:
     assert _scope_sites(scope) == expected
 
 
-def test_scope_sites_warns_on_string_scope(caplog):
+def test_scope_sites_warns_on_string_scope(caplog) -> None:
     assert _scope_sites({"sites": "HQ"}) is None
     assert "Ignoring invalid policy scope.sites string" in caplog.text
 
 
-def test_records_by_cs_id_warns_on_duplicate_ids(caplog):
+def test_records_by_cs_id_warns_on_duplicate_ids(caplog) -> None:
     records = [
         {"cs_device_id": "cs-1", "asset": {"device_id": 1, "host_name": "a"}},
         {"cs_device_id": "cs-1", "asset": {"device_id": 2, "host_name": "b"}},
@@ -96,7 +97,7 @@ def test_records_by_cs_id_warns_on_duplicate_ids(caplog):
     assert "Duplicate ConfigState device id" in caplog.text
 
 
-def test_device_names_skips_empty_hostname(caplog):
+def test_device_names_skips_empty_hostname(caplog) -> None:
     records = {
         "cs-1": {"asset": {"device_id": 1, "host_name": ""}},
         "cs-2": {"asset": {"device_id": 2, "host_name": "sw-ok"}},
@@ -106,18 +107,18 @@ def test_device_names_skips_empty_hostname(caplog):
     assert "host_name is empty" in caplog.text
 
 
-def test_chunked_with_non_positive_size_yields_whole_list():
+def test_chunked_with_non_positive_size_yields_whole_list() -> None:
     values = [1, 2, 3]
     assert list(_chunked(values, 0)) == [values]
     assert list(_chunked(values, -1)) == [values]
 
 
-def test_truncate_error_body_with_tiny_limit():
+def test_truncate_error_body_with_tiny_limit() -> None:
     assert truncate_error_body("abcdef", limit=3) == "abc"
     assert truncate_error_body("ab", limit=3) == "ab"
 
 
-def test_client_auth_headers_without_refresh_credentials():
+def test_client_auth_headers_without_refresh_credentials() -> None:
     client = PlatformOneClient(api_token="tok")
     client._token_expiry = 0.0
     client._username = None
@@ -127,7 +128,7 @@ def test_client_auth_headers_without_refresh_credentials():
 
 
 @responses.activate
-def test_login_redirect_raises():
+def test_login_redirect_raises() -> None:
     responses.add(responses.POST, LOGIN_URL, status=302)
     client = PlatformOneClient(username="u", password="p")
     with pytest.raises(PlatformOneApiError, match="unexpected redirect"):
@@ -135,7 +136,7 @@ def test_login_redirect_raises():
 
 
 @responses.activate
-def test_login_missing_access_token_raises():
+def test_login_missing_access_token_raises() -> None:
     responses.add(responses.POST, LOGIN_URL, json={"expires_in": 3600}, status=200)
     client = PlatformOneClient(username="u", password="p")
     with pytest.raises(PlatformOneApiError, match="access_token"):
@@ -143,14 +144,14 @@ def test_login_missing_access_token_raises():
 
 
 @responses.activate
-def test_api_redirect_raises():
+def test_api_redirect_raises() -> None:
     responses.add(responses.POST, ASSETS_URL, status=301)
     with pytest.raises(PlatformOneApiError, match="unexpected redirect"):
         list(PlatformOneClient(api_token="tok").get_devices())
 
 
 @responses.activate
-def test_api_non_object_json_raises():
+def test_api_non_object_json_raises() -> None:
     responses.add(
         responses.POST,
         ASSETS_URL,
@@ -161,20 +162,20 @@ def test_api_non_object_json_raises():
         list(PlatformOneClient(api_token="tok").get_devices())
 
 
-def test_extract_cs_devices_skips_assets_without_serial():
+def test_extract_cs_devices_skips_assets_without_serial() -> None:
     client = MagicMock()
     assert extract_cs_devices(client, [{"host_name": "x"}]) == []
     client.retrieve.assert_not_called()
 
 
-def test_index_unique_skips_empty_keys(caplog):
+def test_index_unique_skips_empty_keys(caplog) -> None:
     items = [{"serial": ""}, {"serial": "SN1"}]
     index = index_unique(items, lambda item: item.get("serial") or None, label="serial")
     assert index == {"SN1": items[1]}
 
 
 @responses.activate
-def test_correlated_records_degrades_when_location_fetch_fails(caplog):
+def test_correlated_records_degrades_when_location_fetch_fails(caplog) -> None:
     asset = {**SWITCH_ASSET}
     responses.add(
         responses.POST,
@@ -203,13 +204,13 @@ def test_correlated_records_degrades_when_location_fetch_fails(caplog):
     assert "location fetch failed" in caplog.text
 
 
-def test_extract_inferred_clusters_empty_input():
+def test_extract_inferred_clusters_empty_input() -> None:
     client = MagicMock()
     assert clusters_mod.extract_inferred_clusters(client, []) == []
 
 
 @responses.activate
-def test_extract_inferred_clusters_skips_incomplete_device_rows():
+def test_extract_inferred_clusters_skips_incomplete_device_rows() -> None:
     client = PlatformOneClient(api_token="tok")
     responses.add(
         responses.POST,
@@ -221,7 +222,7 @@ def test_extract_inferred_clusters_skips_incomplete_device_rows():
 
 
 @responses.activate
-def test_extract_inferred_clusters_skips_out_of_scope_members():
+def test_extract_inferred_clusters_skips_out_of_scope_members() -> None:
     client = PlatformOneClient(api_token="tok")
     responses.add(
         responses.POST,
@@ -247,7 +248,7 @@ def test_extract_inferred_clusters_skips_out_of_scope_members():
 
 
 @responses.activate
-def test_extract_inferred_clusters_skips_rows_without_cluster_id():
+def test_extract_inferred_clusters_skips_rows_without_cluster_id() -> None:
     client = PlatformOneClient(api_token="tok")
     responses.add(
         responses.POST,
@@ -271,7 +272,7 @@ def test_extract_inferred_clusters_skips_rows_without_cluster_id():
     assert clusters_mod.extract_inferred_clusters(client, ["cs-1", "cs-2"]) == []
 
 
-def test_extract_inferred_clusters_skips_none_cluster_rows(monkeypatch):
+def test_extract_inferred_clusters_skips_none_cluster_rows(monkeypatch) -> None:
     monkeypatch.setattr(
         clusters_mod,
         "retrieve_parallel",
@@ -282,11 +283,11 @@ def test_extract_inferred_clusters_skips_none_cluster_rows(monkeypatch):
     assert clusters_mod.extract_inferred_clusters(client, ["cs-1"]) == []
 
 
-def test_retrieve_parallel_empty_jobs():
+def test_retrieve_parallel_empty_jobs() -> None:
     assert retrieve_mod.retrieve_parallel(MagicMock(), []) == []
 
 
-def test_retrieve_ok_skips_none_rows(monkeypatch):
+def test_retrieve_ok_skips_none_rows(monkeypatch) -> None:
     monkeypatch.setattr(
         retrieve_mod,
         "retrieve_parallel",
@@ -302,13 +303,13 @@ def test_retrieve_ok_skips_none_rows(monkeypatch):
             policy_name="p",
             failed_tables=failed,
             degradation="ports",
-        )
+        ),
     )
     assert rows == []
     assert failed == []
 
 
-def test_extract_device_table_buckets_empty_inputs():
+def test_extract_device_table_buckets_empty_inputs() -> None:
     client = MagicMock()
     buckets, failed = retrieve_mod.extract_device_table_buckets(
         client,
@@ -321,7 +322,7 @@ def test_extract_device_table_buckets_empty_inputs():
     assert failed == []
 
 
-def test_extract_device_table_buckets_ignores_unknown_device_rows(monkeypatch):
+def test_extract_device_table_buckets_ignores_unknown_device_rows(monkeypatch) -> None:
     monkeypatch.setattr(
         retrieve_mod,
         "retrieve_ok",
@@ -330,8 +331,8 @@ def test_extract_device_table_buckets_ignores_unknown_device_rows(monkeypatch):
                 (
                     ("port_states", ("asset-port-state", "asset_device_id")),
                     [{"asset_device_id": "other"}],
-                )
-            ]
+                ),
+            ],
         ),
     )
     client = MagicMock()
@@ -346,7 +347,7 @@ def test_extract_device_table_buckets_ignores_unknown_device_rows(monkeypatch):
     assert buckets["cs-1"]["port_states"] == []
 
 
-def test_common_coercion_and_cidr_helpers():
+def test_common_coercion_and_cidr_helpers() -> None:
     assert common_mod._interface_custom_fields(interface_id=None) == {}
     assert common_mod._coerce_bool(1) is True
     assert common_mod._coerce_bool(0) is False
@@ -359,7 +360,7 @@ def test_common_coercion_and_cidr_helpers():
     assert common_mod._explicit_cidr("not-an-ip", mask_length=24) is None
 
 
-def test_devices_coord_site_merge_and_primary_ip_guards(stub_sdk):
+def test_devices_coord_site_merge_and_primary_ip_guards(stub_sdk) -> None:
     from orb_extreme_platformone.transform import devices as devices_mod
 
     assert devices_mod._coord(True) is None
@@ -401,7 +402,7 @@ def test_devices_coord_site_merge_and_primary_ip_guards(stub_sdk):
     assert unnamed == []
 
 
-def test_primary_ips_from_tables_mgmt_and_asset_match_paths():
+def test_primary_ips_from_tables_mgmt_and_asset_match_paths() -> None:
     tables = {
         "interface_ips": [
             {"asset_interface_id": "if-1", "address": "10.0.0.5", "mask_length": 24},
@@ -424,12 +425,12 @@ def test_primary_ips_from_tables_mgmt_and_asset_match_paths():
                 {"asset_interface_id": "if-2", "address": "10.0.0.9", "mask_length": 24, "is_primary": True},
                 {"asset_interface_id": "if-1", "address": "not-an-ip", "mask_length": 24},
             ],
-        }
+        },
     )
     assert primary["primary_ip4"] == "10.0.0.9/24"
 
 
-def test_orphan_ip_reuses_existing_virtual_interface(stub_sdk):
+def test_orphan_ip_reuses_existing_virtual_interface(stub_sdk) -> None:
     ips = [{"asset_interface_id": "if-svi", "address": "10.0.10.1", "mask_length": 24}]
     second_ip = {"asset_interface_id": "if-svi", "address": "10.0.10.2", "mask_length": 24}
     tables = _tables(
@@ -445,7 +446,7 @@ def test_orphan_ip_reuses_existing_virtual_interface(stub_sdk):
     assert len(svi_interfaces) == 1
 
 
-def test_lag_member_list_ignores_non_dict_entries(stub_sdk):
+def test_lag_member_list_ignores_non_dict_entries(stub_sdk) -> None:
     from orb_extreme_platformone.transform.lags import _member_interface_names
 
     assert _member_interface_names({"member_ports": ["bad", {"interface_name": "1/1"}]}) == ["1/1"]
@@ -453,13 +454,13 @@ def test_lag_member_list_ignores_non_dict_entries(stub_sdk):
     assert _member_interface_names(blank_member) == ["1/2"]
 
 
-def test_lag_admin_enabled_honors_false_port_config(stub_sdk):
+def test_lag_admin_enabled_honors_false_port_config(stub_sdk) -> None:
     from orb_extreme_platformone.transform.lags import _lag_admin_enabled
 
     assert _lag_admin_enabled({"enabled": False}) is False
 
 
-def test_physical_port_skips_unnamed_and_lag_name_collision(stub_sdk):
+def test_physical_port_skips_unnamed_and_lag_name_collision(stub_sdk) -> None:
     from orb_extreme_platformone.transform.physical_ports import _physical_port_entities
 
     config = {**PORT_CONFIG, "name": "", "asset_interface_id": "if-empty"}
@@ -481,11 +482,11 @@ def test_physical_port_skips_unnamed_and_lag_name_collision(stub_sdk):
     assert emitted == {}
 
 
-def test_capabilities_by_port_skips_blank_names():
+def test_capabilities_by_port_skips_blank_names() -> None:
     assert _capabilities_by_port([{"port_name": "", "asset_device_id": "cs-1"}]) == {}
 
 
-def test_virtual_chassis_skip_paths(stub_sdk, caplog):
+def test_virtual_chassis_skip_paths(stub_sdk, caplog) -> None:
     entities, memberships = transform.virtual_chassis_to_entities(
         [{"device_one_id": "", "device_two_id": "cs-2"}],
         records_by_cs_id={},
@@ -537,7 +538,7 @@ def test_virtual_chassis_skip_paths(stub_sdk, caplog):
     assert "platformone_cluster_id" not in vc_fields
 
 
-def test_split_if_names_variants():
+def test_split_if_names_variants() -> None:
     assert _split_if_names(None) == []
     assert _split_if_names([]) == []
     assert _split_if_names("") == []
@@ -547,7 +548,7 @@ def test_split_if_names_variants():
     assert _split_if_names("wifi0") == ["wifi0"]
 
 
-def test_wireless_rf_edge_cases():
+def test_wireless_rf_edge_cases() -> None:
     assert wireless_rf._channel_frequency_mhz(None, 36) is None
     assert wireless_rf._channel_frequency_mhz("5GHz", "bad") is None
     assert wireless_rf._channel_frequency_mhz(None, 36) is None
@@ -558,7 +559,7 @@ def test_wireless_rf_edge_cases():
     assert wireless_rf._channel_width_mhz(15) is None
 
 
-def test_wireless_skips_unnamed_radios_and_blank_ssids(stub_sdk):
+def test_wireless_skips_unnamed_radios_and_blank_ssids(stub_sdk) -> None:
     tables = {
         "cs-ap-1": {
             "wireless_interfaces": [
@@ -567,13 +568,13 @@ def test_wireless_skips_unnamed_radios_and_blank_ssids(stub_sdk):
             "wireless_states": [{"asset_device_id": "cs-ap-1", "asset_interface_id": "r1"}],
             "ssid_configs": [{"asset_device_id": "cs-ap-1", "name": "", "if_names": "wifi0"}],
             "ssid_states": [{"asset_device_id": "cs-ap-1", "name": " ", "if_names": "wifi0"}],
-        }
+        },
     }
     entities = transform.radios_to_entities(tables, device_names={"cs-ap-1": "ap-1"})
     assert not [e for e in entities if "interface" in e._kw]
 
 
-def test_fabric_skips_blank_values():
+def test_fabric_skips_blank_values() -> None:
     from orb_extreme_platformone import bootstrap
 
     fields = device_fabric_custom_fields(
@@ -581,12 +582,12 @@ def test_fabric_skips_blank_values():
             "isis_global_configs": [{"manual_area_address": "   ", "area_name": "home"}],
             "isis_global_states": [],
             "spbm_instances": [],
-        }
+        },
     )
     assert bootstrap.CF_ISIS_AREA in fields
 
 
-def test_vlan_fields_ignore_non_dict_maps_and_reserved_only(stub_sdk):
+def test_vlan_fields_ignore_non_dict_maps_and_reserved_only(stub_sdk) -> None:
     from orb_extreme_platformone.transform.vlans import _vlan_fields
 
     fields = _vlan_fields(
@@ -595,8 +596,8 @@ def test_vlan_fields_ignore_non_dict_maps_and_reserved_only(stub_sdk):
                 "asset_interface_id": "if-1",
                 "port_vlan": 0,
                 "vlans": ["bad", {"vlan_number": 20}],
-            }
-        ]
+            },
+        ],
     )
     assert fields["tagged_vlans"][0]._kw["vid"] == 20
     assert fields["mode"] == "tagged"
@@ -605,7 +606,7 @@ def test_vlan_fields_ignore_non_dict_maps_and_reserved_only(stub_sdk):
     assert reserved_only == {}
 
 
-def test_urls_local_host_and_missing_hostname():
+def test_urls_local_host_and_missing_hostname() -> None:
     assert _is_local_dev_host(None) is False
     assert _is_local_dev_host("") is False
     with pytest.raises(ValueError, match="host"):
@@ -613,7 +614,7 @@ def test_urls_local_host_and_missing_hostname():
 
 
 @responses.activate
-def test_bootstrap_request_rejects_redirect():
+def test_bootstrap_request_rejects_redirect() -> None:
     from orb_extreme_platformone.bootstrap import _request
 
     netbox = "https://netbox.example.com"
@@ -623,12 +624,12 @@ def test_bootstrap_request_rejects_redirect():
 
 
 @responses.activate
-def test_run_bootstrap_enabled_calls_ensure_schema(monkeypatch):
+def test_run_bootstrap_enabled_calls_ensure_schema(monkeypatch) -> None:
     from orb_extreme_platformone import bootstrap
 
     seen: list[tuple[str, str]] = []
 
-    def _fake_ensure(url, token):
+    def _fake_ensure(url, token) -> None:
         seen.append((url, token))
 
     monkeypatch.setattr(bootstrap, "ensure_schema", _fake_ensure)
@@ -652,7 +653,7 @@ def test_run_bootstrap_enabled_calls_ensure_schema(monkeypatch):
 
 
 @responses.activate
-def test_run_skips_port_fanout_for_unnamed_switch():
+def test_run_skips_port_fanout_for_unnamed_switch() -> None:
     unnamed = {**SWITCH_ASSET, "host_name": ""}
     _mock_assets([unnamed])
     _mock_cs("asset-device", "AssetDevice", [{**CS_SWITCH, "serial_number": "SN42"}])
@@ -669,7 +670,7 @@ def test_run_skips_port_fanout_for_unnamed_switch():
     assert not [e for e in entities if e.HasField("interface")]
 
 
-def test_collect_interface_ids_skips_blank_ids():
+def test_collect_interface_ids_skips_blank_ids() -> None:
     mapping = collect_interface_ids(
         {
             "cs-1": {
@@ -679,13 +680,13 @@ def test_collect_interface_ids_skips_blank_ids():
                 "lag_states": [],
                 "vlan_properties": [],
                 "poe_states": [],
-            }
-        }
+            },
+        },
     )
     assert mapping == {}
 
 
-def test_attach_interface_id_tables_buckets_rows_and_skips_unknown_devices(monkeypatch):
+def test_attach_interface_id_tables_buckets_rows_and_skips_unknown_devices(monkeypatch) -> None:
     tables_by_device = {
         "cs-1": {
             "port_configs": [{"asset_interface_id": "if-1"}],
@@ -695,7 +696,7 @@ def test_attach_interface_id_tables_buckets_rows_and_skips_unknown_devices(monke
             "vlan_properties": [],
             "poe_states": [],
             "interface_ips": [],
-        }
+        },
     }
     monkeypatch.setattr(
         ports_mod,
@@ -708,15 +709,15 @@ def test_attach_interface_id_tables_buckets_rows_and_skips_unknown_devices(monke
                         {"asset_interface_id": "if-1"},
                         {"asset_interface_id": "if-orphan"},
                     ],
-                )
-            ]
+                ),
+            ],
         ),
     )
     attach_interface_id_tables(MagicMock(), tables_by_device, "p", [])
     assert tables_by_device["cs-1"]["interface_ips"] == [{"asset_interface_id": "if-1"}]
 
 
-def test_attach_interface_id_tables_skips_rows_for_unknown_devices(monkeypatch):
+def test_attach_interface_id_tables_skips_rows_for_unknown_devices(monkeypatch) -> None:
     tables_by_device = {
         "cs-1": {
             "port_configs": [{"asset_interface_id": "if-1"}],
@@ -726,7 +727,7 @@ def test_attach_interface_id_tables_skips_rows_for_unknown_devices(monkeypatch):
             "vlan_properties": [],
             "poe_states": [],
             "interface_ips": [],
-        }
+        },
     }
     monkeypatch.setattr(
         ports_mod,
@@ -744,15 +745,15 @@ def test_attach_interface_id_tables_skips_rows_for_unknown_devices(monkeypatch):
                         {"asset_interface_id": "if-1"},
                         {"asset_interface_id": "if-other"},
                     ],
-                )
-            ]
+                ),
+            ],
         ),
     )
     attach_interface_id_tables(MagicMock(), tables_by_device, "p", [])
     assert tables_by_device["cs-1"]["interface_ips"] == [{"asset_interface_id": "if-1"}]
 
 
-def test_common_interface_identity_and_inline_cidr():
+def test_common_interface_identity_and_inline_cidr() -> None:
     kwargs = common_mod._interface_identity_kwargs(device="sw", name="1/1", interface_id="if-1", enabled=True)
     assert kwargs["custom_fields"]
     without_id = common_mod._interface_identity_kwargs(device="sw", name="1/1")
@@ -760,7 +761,7 @@ def test_common_interface_identity_and_inline_cidr():
     assert common_mod._explicit_cidr("10.0.0.1/24") == "10.0.0.1/24"
 
 
-def test_devices_virtual_chassis_without_cluster_id(stub_sdk):
+def test_devices_virtual_chassis_without_cluster_id(stub_sdk) -> None:
     peer = _record(asset={**SWITCH_ASSET, "device_id": 43, "host_name": "sw-2"}, cs_device_id="cs-2")
     vc_entities, memberships = transform.virtual_chassis_to_entities(
         [{"device_one_id": "cs-1", "device_two_id": "cs-2"}],
@@ -783,7 +784,7 @@ def test_devices_virtual_chassis_without_cluster_id(stub_sdk):
     assert "custom_fields" not in vc_ref
 
 
-def test_primary_ips_invalid_and_asset_host_paths(monkeypatch):
+def test_primary_ips_invalid_and_asset_host_paths(monkeypatch) -> None:
     from orb_extreme_platformone.transform import ips as ips_mod
 
     invalid_mask = {"interface_ips": [{"address": "10.0.0.1", "mask_length": 99}]}
@@ -839,19 +840,20 @@ def test_primary_ips_invalid_and_asset_host_paths(monkeypatch):
                 {"asset_device_id": "cs-uuid-42", "name": "1/2", "asset_interface_id": "if-other"},
             ],
             "port_states": [],
-        }
+        },
     )
     assert mgmt_no_match == {}
 
-    def _raise_bad_interface(_cidr):
-        raise ValueError("bad")
+    def _raise_bad_interface(_cidr) -> NoReturn:
+        msg = "bad"
+        raise ValueError(msg)
 
     monkeypatch.setattr(ips_mod, "_interface_ip_cidr", lambda _row: "10.0.0.1/24")
     monkeypatch.setattr(ips_mod.ipaddress, "ip_interface", _raise_bad_interface)
     assert ips_mod.primary_ips_from_tables({"interface_ips": [{}]}) == {}
 
 
-def test_lag_enabled_and_mac_branches(stub_sdk):
+def test_lag_enabled_and_mac_branches(stub_sdk) -> None:
     from orb_extreme_platformone.transform.lags import _lag_admin_enabled, _lag_kwargs
 
     assert _lag_admin_enabled({"enabled": None}) is True
@@ -875,7 +877,7 @@ def test_lag_enabled_and_mac_branches(stub_sdk):
     assert "primary_mac_address" not in no_mac
 
 
-def test_physical_port_skips_name_in_lag_names(stub_sdk):
+def test_physical_port_skips_name_in_lag_names(stub_sdk) -> None:
     from orb_extreme_platformone.transform.physical_ports import _physical_port_entities
 
     entities, emitted = _physical_port_entities(
@@ -895,14 +897,14 @@ def test_physical_port_skips_name_in_lag_names(stub_sdk):
     assert emitted == {}
 
 
-def test_vlan_fields_warns_on_conflicting_port_vlan(stub_sdk, caplog):
+def test_vlan_fields_warns_on_conflicting_port_vlan(stub_sdk, caplog) -> None:
     from orb_extreme_platformone.transform.vlans import _vlan_fields
 
     _vlan_fields(
         [
             {"asset_interface_id": "if-1", "port_vlan": 10, "vlans": [{"vlan_number": 20}]},
             {"asset_interface_id": "if-1", "port_vlan": 20, "vlans": [{"vlan_number": 30}]},
-        ]
+        ],
     )
     assert "Conflicting port_vlan" in caplog.text
 
@@ -910,18 +912,18 @@ def test_vlan_fields_warns_on_conflicting_port_vlan(stub_sdk, caplog):
         [
             {"asset_interface_id": "if-1", "port_vlan": 10, "vlans": [{"vlan_number": 20}]},
             {"asset_interface_id": "if-1", "port_vlan": 10, "vlans": [{"vlan_number": 30}]},
-        ]
+        ],
     )
     assert repeated["untagged_vlan"]._kw["vid"] == 10
 
 
-def test_wireless_rf_matches_remaining_modes():
+def test_wireless_rf_matches_remaining_modes() -> None:
     assert wireless_rf._radio_type("legacy_11a_radio") == "ieee802.11a"
     assert wireless_rf._radio_type("legacy_11b_radio") == "ieee802.11b"
     assert wireless_rf._radio_type("totally_unknown_mode") is None
 
 
-def test_orphan_ip_emits_one_interface_for_shared_name(stub_sdk):
+def test_orphan_ip_emits_one_interface_for_shared_name(stub_sdk) -> None:
     from orb_extreme_platformone.transform.ips import _orphan_ip_entities
 
     interface_ips = {
@@ -938,6 +940,6 @@ def test_orphan_ip_emits_one_interface_for_shared_name(stub_sdk):
     assert sum(1 for entity in entities if "ip_address" in entity._kw) == 2
 
 
-def test_require_https_url_rejects_missing_hostname():
+def test_require_https_url_rejects_missing_hostname() -> None:
     with pytest.raises(ValueError, match="host"):
         require_https_url("https://:8080", what="TEST")

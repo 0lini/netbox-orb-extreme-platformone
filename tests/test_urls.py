@@ -17,7 +17,7 @@ from orb_extreme_platformone.urls import require_https_url
         "https://netbox.example.com:443",
     ],
 )
-def test_require_https_url_accepts_https_hosts(url):
+def test_require_https_url_accepts_https_hosts(url) -> None:
     cleaned = require_https_url(url, what="TEST_URL")
     assert cleaned.startswith("https://")
     assert not cleaned.endswith("/")
@@ -35,7 +35,7 @@ def test_require_https_url_accepts_https_hosts(url):
         " http://localhost:8000/ ",
     ],
 )
-def test_require_https_url_accepts_http_for_local_dev_hosts(url):
+def test_require_https_url_accepts_http_for_local_dev_hosts(url) -> None:
     cleaned = require_https_url(url, what="TEST_URL")
     assert cleaned.startswith("http://")
     assert not cleaned.endswith("/")
@@ -59,6 +59,6 @@ def test_require_https_url_accepts_http_for_local_dev_hosts(url):
         "https://netbox.example.com#frag",
     ],
 )
-def test_require_https_url_rejects_non_https_userinfo_or_hostless(url):
+def test_require_https_url_rejects_non_https_userinfo_or_hostless(url) -> None:
     with pytest.raises(ValueError, match="TEST_URL"):
         require_https_url(url, what="TEST_URL")

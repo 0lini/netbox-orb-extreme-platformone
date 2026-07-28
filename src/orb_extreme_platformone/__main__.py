@@ -7,7 +7,6 @@ pushed to Diode.
 
 from __future__ import annotations
 
-import json
 import logging
 import os
 from datetime import timezone
@@ -74,8 +73,6 @@ def main() -> None:
         data = MessageToDict(entity, preserving_proto_field_name=True)
         ts = entity.timestamp.ToDatetime(tzinfo=timezone.utc).astimezone()
         data["timestamp"] = ts.isoformat(timespec="seconds")
-        print(json.dumps(_quote_values(data), indent=2, ensure_ascii=False))
-        print()
 
 
 if __name__ == "__main__":

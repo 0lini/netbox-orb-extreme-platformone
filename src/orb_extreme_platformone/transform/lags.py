@@ -209,7 +209,7 @@ def _lag_entities(
                 interface_name=name,
                 rows=interface_ips.get(key, []),
                 interface_type="lag",
-            )
+            ),
         )
 
     return entities, lag_names, lag_interface_ids, membership, emitted_keys

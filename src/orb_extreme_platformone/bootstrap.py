@@ -132,8 +132,9 @@ def _request(method: str, url: str, token: str, **kwargs):
     kwargs.setdefault("allow_redirects", False)
     resp = requests.request(method, url, headers=_headers(token), **kwargs)
     if 300 <= resp.status_code < 400:
+        msg = f"NetBox unexpected redirect {resp.status_code} for {url}"
         raise requests.HTTPError(
-            f"NetBox unexpected redirect {resp.status_code} for {url}",
+            msg,
             response=resp,
         )
     resp.raise_for_status()

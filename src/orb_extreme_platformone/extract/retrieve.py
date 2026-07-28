@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
+from typing import TYPE_CHECKING
 
 from orb_extreme_platformone.client import PlatformOneApiError, PlatformOneClient
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 logger = logging.getLogger("orb_extreme_platformone.extract")
 
@@ -15,7 +18,7 @@ TableCatalog = dict[str, tuple[str, str]]
 
 
 def retrieve_parallel(
-    client: PlatformOneClient, jobs: list[tuple[str, dict]]
+    client: PlatformOneClient, jobs: list[tuple[str, dict]],
 ) -> list[tuple[str, list[dict] | None, PlatformOneApiError | None]]:
     """Run independent ConfigState retrieves concurrently.
 

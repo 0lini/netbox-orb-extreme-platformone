@@ -137,8 +137,8 @@ def _ip_entities_for_interface(
                     status="active",
                     assigned_object_interface=Interface(**iface_kwargs),
                     tags=PROVENANCE_TAGS,
-                )
-            )
+                ),
+            ),
         )
     return entities
 
@@ -180,9 +180,9 @@ def _orphan_ip_entities(
                                 interface_id=key or None,
                             ),
                             "type": VIRTUAL_INTERFACE_TYPE,
-                        }
-                    )
-                )
+                        },
+                    ),
+                ),
             )
             emitted_names.add(name)
         entities.extend(
@@ -191,7 +191,7 @@ def _orphan_ip_entities(
                 interface_name=name,
                 rows=rows,
                 interface_type=VIRTUAL_INTERFACE_TYPE,
-            )
+            ),
         )
     return entities
 

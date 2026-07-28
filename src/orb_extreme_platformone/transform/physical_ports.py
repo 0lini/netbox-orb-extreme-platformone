@@ -186,7 +186,7 @@ def _physical_port_entities(
                 interface_name=name,
                 rows=interface_ips.get(key, []),
                 interface_type=kwargs.get("type"),
-            )
+            ),
         )
 
     return entities, emitted_keys

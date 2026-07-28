@@ -28,7 +28,7 @@ LAG_STATE = {
 }
 
 
-def test_ports_to_entities_maps_lag_parent_and_member_refs(stub_sdk):
+def test_ports_to_entities_maps_lag_parent_and_member_refs(stub_sdk) -> None:
     port2 = {**PORT_CONFIG, "asset_interface_id": "if-uuid-2", "name": "1/2"}
     entities = transform.ports_to_entities(
         _tables(
@@ -42,7 +42,7 @@ def test_ports_to_entities_maps_lag_parent_and_member_refs(stub_sdk):
     )
 
     ports = {e._kw["interface"]._kw["name"]: e._kw["interface"]._kw for e in entities}
-    assert [e._kw["interface"]._kw["name"] for e in entities][0] == "lag1"
+    assert next(e._kw["interface"]._kw["name"] for e in entities) == "lag1"
     assert ports["lag1"]["type"] == "lag"
     assert ports["lag1"]["enabled"] is True
     assert cf(ports["lag1"]["custom_fields"]["platformone_interface_id"]._kw) == "lag-if-1"
@@ -52,7 +52,7 @@ def test_ports_to_entities_maps_lag_parent_and_member_refs(stub_sdk):
     assert ports["1/2"]["lag"]._kw["device"]._kw["name"] == "sw-idf1"
 
 
-def test_ports_to_entities_skips_lag_without_name(stub_sdk):
+def test_ports_to_entities_skips_lag_without_name(stub_sdk) -> None:
     """Switches auto-generate LAG names; do not invent lag-{n} from lag_number."""
     lag = {**LAG_CONFIG, "name": None, "member_ports": []}
     entities = transform.ports_to_entities(
@@ -63,7 +63,7 @@ def test_ports_to_entities_skips_lag_without_name(stub_sdk):
     assert entities == []
 
 
-def test_ports_to_entities_uses_state_lag_name_for_config_members(stub_sdk):
+def test_ports_to_entities_uses_state_lag_name_for_config_members(stub_sdk) -> None:
     """Membership comes from lag-config; name may live only on paired lag-state."""
     lag_config = {**LAG_CONFIG, "name": None}
     lag_state = {
@@ -90,7 +90,7 @@ def test_ports_to_entities_uses_state_lag_name_for_config_members(stub_sdk):
     assert ports["1/2"]["lag"]._kw["name"] == "state-lag"
 
 
-def test_ports_to_entities_uses_state_member_ports_when_config_omits_them(stub_sdk):
+def test_ports_to_entities_uses_state_member_ports_when_config_omits_them(stub_sdk) -> None:
     """When lag-config has no member_ports, fall back to lag-state members."""
     lag_config = {**LAG_CONFIG, "member_ports": []}
     lag_state = {
@@ -118,7 +118,7 @@ def test_ports_to_entities_uses_state_member_ports_when_config_omits_them(stub_s
     assert ports["1/2"]["lag"]._kw["name"] == "lag1"
 
 
-def test_ports_to_entities_warns_on_dual_lag_membership(stub_sdk, caplog):
+def test_ports_to_entities_warns_on_dual_lag_membership(stub_sdk, caplog) -> None:
     lag_a = {**LAG_CONFIG, "name": "lag-a", "member_ports": [{"interface_name": "1/1"}]}
     lag_b = {
         **LAG_CONFIG,
@@ -140,7 +140,7 @@ def test_ports_to_entities_warns_on_dual_lag_membership(stub_sdk, caplog):
     assert "listed as member of both" in caplog.text
 
 
-def test_ports_to_entities_emits_duplicate_port_when_lag_is_unnamed(stub_sdk):
+def test_ports_to_entities_emits_duplicate_port_when_lag_is_unnamed(stub_sdk) -> None:
     """Unnamed LAG must not suppress a port-table row that shares its interface id."""
     lag = {**LAG_CONFIG, "name": None, "member_ports": []}
     lag_as_port = {
@@ -167,7 +167,7 @@ def test_ports_to_entities_emits_duplicate_port_when_lag_is_unnamed(stub_sdk):
     assert "type" not in ports[0]
 
 
-def test_ports_to_entities_skips_lag_members_without_port_rows(stub_sdk):
+def test_ports_to_entities_skips_lag_members_without_port_rows(stub_sdk) -> None:
     """LAG membership alone does not invent stub member Interfaces."""
     entities = transform.ports_to_entities(
         _tables(
@@ -184,7 +184,7 @@ def test_ports_to_entities_skips_lag_members_without_port_rows(stub_sdk):
     assert set(ports) == {"lag1"}
 
 
-def test_ports_to_entities_skips_lag_row_duplicated_in_port_tables(stub_sdk):
+def test_ports_to_entities_skips_lag_row_duplicated_in_port_tables(stub_sdk) -> None:
     """If AssetPortConfig also returns the LAG's asset_interface_id, emit type=lag once."""
     lag_as_port = {
         "asset_device_id": "cs-uuid-42",
@@ -228,7 +228,7 @@ def test_ports_to_entities_skips_lag_row_duplicated_in_port_tables(stub_sdk):
     assert "duplex" not in ports[0]
 
 
-def test_ports_to_entities_lag_applies_vlan_trunk_from_vlan_properties(stub_sdk):
+def test_ports_to_entities_lag_applies_vlan_trunk_from_vlan_properties(stub_sdk) -> None:
     """Trunk VLANs on the LAG parent come from vlan-properties on its interface id."""
     vlan_on_lag = {
         "asset_interface_id": "lag-if-1",
@@ -253,7 +253,7 @@ def test_ports_to_entities_lag_applies_vlan_trunk_from_vlan_properties(stub_sdk)
     assert [v._kw["vid"] for v in lag["tagged_vlans"]] == [20, 30]
 
 
-def test_ports_to_entities_lag_ignores_false_enabled_from_lag_config(stub_sdk):
+def test_ports_to_entities_lag_ignores_false_enabled_from_lag_config(stub_sdk) -> None:
     """AssetLagConfig.enabled is false in production for in-service MLTs.
 
     Diode maps omitted/false onto NetBox disabled; assert admin-up unless a
@@ -267,7 +267,7 @@ def test_ports_to_entities_lag_ignores_false_enabled_from_lag_config(stub_sdk):
     assert entities[0]._kw["interface"]._kw["enabled"] is True
 
 
-def test_ports_to_entities_lag_enabled_follows_duplicate_port_config(stub_sdk):
+def test_ports_to_entities_lag_enabled_follows_duplicate_port_config(stub_sdk) -> None:
     """When port tables also list the LAG interface id, prefer that admin state."""
     lag = {**LAG_CONFIG, "enabled": True, "member_ports": []}
     lag_as_port = {
@@ -289,7 +289,7 @@ def test_ports_to_entities_lag_enabled_follows_duplicate_port_config(stub_sdk):
     assert entities[0]._kw["interface"]._kw["enabled"] is False
 
 
-def test_ports_to_entities_lag_vlan_joins_on_asset_interface_id(stub_sdk):
+def test_ports_to_entities_lag_vlan_joins_on_asset_interface_id(stub_sdk) -> None:
     """VLAN rows attach to the LAG only via asset_interface_id (always present)."""
     vlan_on_lag = {
         "asset_interface_id": "lag-if-1",
@@ -313,7 +313,7 @@ def test_ports_to_entities_lag_vlan_joins_on_asset_interface_id(stub_sdk):
     assert [v._kw["vid"] for v in lag["tagged_vlans"]] == [20]
 
 
-def test_ports_to_entities_ignores_vlan_rows_without_asset_interface_id(stub_sdk):
+def test_ports_to_entities_ignores_vlan_rows_without_asset_interface_id(stub_sdk) -> None:
     """Name-only vlan-properties rows are not joined (asset_interface_id is required)."""
     vlan_name_only = {
         "interface_name": "lag1",
@@ -336,7 +336,7 @@ def test_ports_to_entities_ignores_vlan_rows_without_asset_interface_id(stub_sdk
     assert "tagged_vlans" not in lag
 
 
-def test_ports_to_entities_lag_joins_poe_and_ip_like_physical_ports(stub_sdk):
+def test_ports_to_entities_lag_joins_poe_and_ip_like_physical_ports(stub_sdk) -> None:
     """PoE + IP joins use the LAG's asset_interface_id the same way as ports."""
     poe_state = {"asset_interface_id": "lag-if-1", "supported": True}
     ips = [
@@ -344,7 +344,7 @@ def test_ports_to_entities_lag_joins_poe_and_ip_like_physical_ports(stub_sdk):
             "asset_interface_id": "lag-if-1",
             "address": "10.0.0.1",
             "mask_length": 24,
-        }
+        },
     ]
     entities = transform.ports_to_entities(
         _tables(
@@ -369,7 +369,7 @@ def test_ports_to_entities_lag_joins_poe_and_ip_like_physical_ports(stub_sdk):
     assert ips_out[0]["assigned_object_interface"]._kw["name"] == "lag1"
 
 
-def test_ports_to_entities_ignores_unmapped_lacp_fields_on_lag(stub_sdk):
+def test_ports_to_entities_ignores_unmapped_lacp_fields_on_lag(stub_sdk) -> None:
     """LACP mode/key/algo have no Diode target; do not invent description or mode."""
     lag = {
         **LAG_CONFIG,

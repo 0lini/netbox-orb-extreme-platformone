@@ -17,7 +17,7 @@ def _virtual_chassis_name(cluster: dict, device_one_name: str, device_two_name: 
     member device names. No invented ``cluster-{uuid}`` name.
     """
     peers = sorted(
-        {name for name in (cluster.get("device_one_peer_name"), cluster.get("device_two_peer_name")) if name}
+        {name for name in (cluster.get("device_one_peer_name"), cluster.get("device_two_peer_name")) if name},
     )
     if len(peers) >= 2:
         return " / ".join(peers)

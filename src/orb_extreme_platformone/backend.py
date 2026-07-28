@@ -13,11 +13,10 @@ from __future__ import annotations
 
 import logging
 import os
-from collections.abc import Iterable
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as pkg_version
+from typing import TYPE_CHECKING
 
-from netboxlabs.diode.sdk.ingester import Entity
 from worker.backend import Backend as WorkerBackend
 from worker.models import Metadata, Policy
 
@@ -36,6 +35,11 @@ from .extract.fabric import extract_fabric_tables
 from .extract.ports import extract_port_tables
 from .extract.wireless import extract_wireless_tables
 from .identity import asset_label, device_name, is_ap, is_switch, resolve_location
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
+
+    from netboxlabs.diode.sdk.ingester import Entity
 
 logger = logging.getLogger(__name__)
 
@@ -212,9 +216,12 @@ class Backend(WorkerBackend):
             netbox_url = _cfg_or_env(config, "NETBOX_API_URL")
             netbox_token = _cfg_or_env(config, "NETBOX_API_TOKEN")
             if not netbox_url or not netbox_token:
-                raise ValueError(
+                msg = (
                     "BOOTSTRAP is enabled but NETBOX_API_URL / NETBOX_API_TOKEN "
                     "are missing; provide both or set BOOTSTRAP: false"
+                )
+                raise ValueError(
+                    msg,
                 )
             logger.info("Policy %s: running bootstrap (custom fields + provenance tags)", policy_name)
             bootstrap.ensure_schema(netbox_url, netbox_token)
@@ -245,7 +252,7 @@ class Backend(WorkerBackend):
         # entities so primary_ip can use ConfigState interface CIDRs and so
         # Device CFs can carry ISIS area / system id / SPBM nickname.
         port_entities, primary_ips_by_cs_id, fabric_by_cs_id = self._port_entities(
-            client, scoped, policy_name
+            client, scoped, policy_name,
         )
         radio_entities = self._radio_entities(client, scoped, policy_name)
         # Emit Devices *without* primary_ip* first so serial / custom fields are
@@ -260,14 +267,14 @@ class Backend(WorkerBackend):
         entities.extend(port_entities)
         entities.extend(radio_entities)
         entities.extend(
-            transform.primary_ip_device_entities(scoped, primary_ips_by_cs_id=primary_ips_by_cs_id)
+            transform.primary_ip_device_entities(scoped, primary_ips_by_cs_id=primary_ips_by_cs_id),
         )
 
         return entities
 
     @staticmethod
     def _virtual_chassis_entities(
-        client: PlatformOneClient, records: list[dict], policy_name: str
+        client: PlatformOneClient, records: list[dict], policy_name: str,
     ) -> tuple[list[Entity], dict[str, dict]]:
         """Fetch InferredCluster and map to VirtualChassis + memberships.
 
@@ -316,7 +323,7 @@ class Backend(WorkerBackend):
 
     @staticmethod
     def _port_entities(
-        client: PlatformOneClient, records: list[dict], policy_name: str
+        client: PlatformOneClient, records: list[dict], policy_name: str,
     ) -> tuple[list[Entity], dict[str, dict[str, str]], dict[str, dict]]:
         """Fetch port/LAG + fabric tables for in-scope switches and map entities.
 
@@ -361,7 +368,7 @@ class Backend(WorkerBackend):
                     function=meta.get("function"),
                     site_name=meta.get("site_name"),
                     product_type=meta.get("product_type"),
-                )
+                ),
             )
         logger.info("Policy %s: mapped %d wired port entities", policy_name, len(entities))
         if fabric_by_cs_id:

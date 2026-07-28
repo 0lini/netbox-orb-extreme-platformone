@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
-from orb_extreme_platformone.client import PlatformOneClient
+from typing import TYPE_CHECKING
 
 from .retrieve import extract_device_table_buckets, retrieve_ok
 from .tables import INTERFACE_ID_TABLES, PORT_TABLES
+
+if TYPE_CHECKING:
+    from orb_extreme_platformone.client import PlatformOneClient
 
 # Capabilities have no asset_interface_id; derive the rest from PORT_TABLES so
 # a new interface-id-bearing table cannot be forgotten here.
