@@ -5,7 +5,7 @@ from __future__ import annotations
 from orb_extreme_platformone import transform
 from orb_extreme_platformone.catalog import INTERFACE_ID_TABLES, PORT_TABLES
 from tests.conftest import PORT_CONFIG, PORT_STATE, VLAN_PROPERTIES, cf
-from tests.transform_helpers import _tables
+from tests.transform_helpers import _port_record, _tables
 
 
 def test_port_entity_table_keys_match_backend_extracts() -> None:
@@ -17,7 +17,7 @@ def test_ports_to_entities_warns_on_duplicate_first_row_join(stub_sdk, caplog) -
     dup = {**PORT_CONFIG, "enabled": False}
     entities = transform.ports_to_entities(
         _tables(port_configs=[PORT_CONFIG, dup], vlan_properties=[]),
-        device="sw-idf1",
+        record=_port_record(),
     )
 
     assert entities[0]._kw["interface"]._kw["enabled"] is True
@@ -25,7 +25,7 @@ def test_ports_to_entities_warns_on_duplicate_first_row_join(stub_sdk, caplog) -
 
 
 def test_ports_to_entities_maps_config_state_and_vlans_onto_one_interface(stub_sdk) -> None:
-    entities = transform.ports_to_entities(_tables(), device="sw-idf1")
+    entities = transform.ports_to_entities(_tables(), record=_port_record())
 
     assert len(entities) == 1
     port = entities[0]._kw["interface"]._kw
@@ -49,7 +49,7 @@ def test_ports_to_entities_maps_config_state_and_vlans_onto_one_interface(stub_s
 
 def test_ports_to_entities_config_only_port_still_syncs_admin_state(stub_sdk) -> None:
     """No port-state: admin state syncs; type omitted so degrade cannot invent other."""
-    entities = transform.ports_to_entities(_tables(port_states=[], vlan_properties=[]), device="sw-idf1")
+    entities = transform.ports_to_entities(_tables(port_states=[], vlan_properties=[]), record=_port_record())
 
     port = entities[0]._kw["interface"]._kw
     assert port["enabled"] is True
@@ -67,7 +67,7 @@ def test_ports_to_entities_state_only_port_still_syncs_link_state(stub_sdk) -> N
     down = {**PORT_STATE, "oper_state": 2}
     entities = transform.ports_to_entities(
         _tables(port_configs=[], port_states=[down], vlan_properties=[]),
-        device="sw-idf1",
+        record=_port_record(),
     )
 
     port = entities[0]._kw["interface"]._kw
@@ -80,7 +80,7 @@ def test_ports_to_entities_admin_down_and_link_down_are_independent(stub_sdk) ->
     state = {**PORT_STATE, "oper_state": 2}
     entities = transform.ports_to_entities(
         _tables(port_configs=[config], port_states=[state], vlan_properties=[]),
-        device="sw-idf1",
+        record=_port_record(),
     )
 
     port = entities[0]._kw["interface"]._kw
@@ -91,7 +91,10 @@ def test_ports_to_entities_admin_down_and_link_down_are_independent(stub_sdk) ->
 def test_ports_to_entities_omits_type_for_unverified_enum_codes(stub_sdk) -> None:
     """Unknown oper_speed/connector_type must not invent Interface.type=other."""
     state = {**PORT_STATE, "oper_speed": 7, "oper_duplex": 9, "connector_type": 3}
-    entities = transform.ports_to_entities(_tables(port_states=[state], vlan_properties=[]), device="sw-idf1")
+    entities = transform.ports_to_entities(
+        _tables(port_states=[state], vlan_properties=[]),
+        record=_port_record(),
+    )
 
     port = entities[0]._kw["interface"]._kw
     assert "speed" not in port
@@ -101,7 +104,10 @@ def test_ports_to_entities_omits_type_for_unverified_enum_codes(stub_sdk) -> Non
 
 def test_ports_to_entities_fiber_gig_port_maps_to_sfp_type(stub_sdk) -> None:
     state = {**PORT_STATE, "connector_type": 2}
-    entities = transform.ports_to_entities(_tables(port_states=[state], vlan_properties=[]), device="sw-idf1")
+    entities = transform.ports_to_entities(
+        _tables(port_states=[state], vlan_properties=[]),
+        record=_port_record(),
+    )
 
     assert entities[0]._kw["interface"]._kw["type"] == "1000base-x-sfp"
 
@@ -116,7 +122,9 @@ def test_ports_to_entities_accepts_string_oper_enum_codes(stub_sdk) -> None:
         "oper_duplex": "2",
     }
     port = (
-        transform.ports_to_entities(_tables(port_states=[state], vlan_properties=[]), device="sw-idf1")[0]
+        transform.ports_to_entities(_tables(port_states=[state], vlan_properties=[]), record=_port_record())[
+            0
+        ]
         ._kw["interface"]
         ._kw
     )
@@ -136,7 +144,7 @@ def test_ports_to_entities_maps_mgmt_only_from_capabilities(stub_sdk) -> None:
     ]
     entities = transform.ports_to_entities(
         _tables(vlan_properties=[], port_capabilities=caps),
-        device="sw-idf1",
+        record=_port_record(),
     )
 
     assert entities[0]._kw["interface"]._kw["mgmt_only"] is True
@@ -155,7 +163,7 @@ def test_ports_to_entities_capabilities_scoped_per_device(stub_sdk, caplog) -> N
     ]
     entities = transform.ports_to_entities(
         _tables(vlan_properties=[], port_capabilities=caps),
-        device="sw-idf1",
+        record=_port_record(),
     )
 
     assert entities[0]._kw["interface"]._kw["mgmt_only"] is False
@@ -169,7 +177,7 @@ def test_ports_to_entities_warns_on_per_device_capability_duplicates(stub_sdk, c
     ]
     entities = transform.ports_to_entities(
         _tables(vlan_properties=[], port_capabilities=caps),
-        device="sw-idf1",
+        record=_port_record(),
     )
 
     assert entities[0]._kw["interface"]._kw["mgmt_only"] is True
@@ -192,7 +200,7 @@ def test_ports_to_entities_maps_poe_mode_pse_when_supported(stub_sdk) -> None:
     }
     entities = transform.ports_to_entities(
         _tables(vlan_properties=[], poe_states=[poe_state], poe_configs=[poe_config]),
-        device="sw-idf1",
+        record=_port_record(),
     )
 
     port = entities[0]._kw["interface"]._kw
@@ -208,7 +216,7 @@ def test_ports_to_entities_omits_poe_when_not_supported(stub_sdk) -> None:
     }
     entities = transform.ports_to_entities(
         _tables(vlan_properties=[], poe_states=[poe_state]),
-        device="sw-idf1",
+        record=_port_record(),
     )
 
     assert "poe_mode" not in entities[0]._kw["interface"]._kw
@@ -224,7 +232,7 @@ def test_ports_to_entities_ignores_poe_config_enable_without_supported(stub_sdk)
     poe_config = {"asset_interface_id": "if-uuid-1", "enable": True, "classification": 3}
     entities = transform.ports_to_entities(
         _tables(vlan_properties=[], poe_states=[poe_state], poe_configs=[poe_config]),
-        device="sw-idf1",
+        record=_port_record(),
     )
 
     port = entities[0]._kw["interface"]._kw
@@ -251,7 +259,7 @@ def test_ports_to_entities_maps_poe_classification_bt_and_omits_unmapped(stub_sd
         port = (
             transform.ports_to_entities(
                 _tables(vlan_properties=[], poe_states=[poe_state], poe_configs=[poe_config]),
-                device="sw-idf1",
+                record=_port_record(),
             )[0]
             ._kw["interface"]
             ._kw
@@ -265,7 +273,9 @@ def test_ports_to_entities_maps_poe_classification_bt_and_omits_unmapped(stub_sd
 def test_ports_to_entities_maps_oper_duplex_half(stub_sdk) -> None:
     state = {**PORT_STATE, "oper_duplex": 1}
     port = (
-        transform.ports_to_entities(_tables(port_states=[state], vlan_properties=[]), device="sw-idf1")[0]
+        transform.ports_to_entities(_tables(port_states=[state], vlan_properties=[]), record=_port_record())[
+            0
+        ]
         ._kw["interface"]
         ._kw
     )
@@ -279,7 +289,7 @@ def test_ports_to_entities_falls_back_to_config_duplex_auto(stub_sdk) -> None:
     port = (
         transform.ports_to_entities(
             _tables(port_configs=[config], port_states=[state], vlan_properties=[]),
-            device="sw-idf1",
+            record=_port_record(),
         )[0]
         ._kw["interface"]
         ._kw
@@ -295,7 +305,7 @@ def test_ports_to_entities_does_not_fallback_for_non_unset_oper_duplex(stub_sdk)
         port = (
             transform.ports_to_entities(
                 _tables(port_configs=[config], port_states=[state], vlan_properties=[]),
-                device="sw-idf1",
+                record=_port_record(),
             )[0]
             ._kw["interface"]
             ._kw
@@ -309,7 +319,7 @@ def test_ports_to_entities_prefers_oper_duplex_over_config(stub_sdk) -> None:
     port = (
         transform.ports_to_entities(
             _tables(port_configs=[config], port_states=[state], vlan_properties=[]),
-            device="sw-idf1",
+            record=_port_record(),
         )[0]
         ._kw["interface"]
         ._kw
@@ -322,7 +332,7 @@ def test_ports_to_entities_does_not_use_native_vlan_without_vlan_properties(stub
     config = {**PORT_CONFIG, "native_vlan": 99, "port_mode": True}
     entities = transform.ports_to_entities(
         _tables(port_configs=[config], vlan_properties=[]),
-        device="sw-idf1",
+        record=_port_record(),
     )
 
     port = entities[0]._kw["interface"]._kw
@@ -332,7 +342,7 @@ def test_ports_to_entities_does_not_use_native_vlan_without_vlan_properties(stub
 
 def test_ports_to_entities_vlan_properties_still_apply_with_native_vlan_present(stub_sdk) -> None:
     config = {**PORT_CONFIG, "native_vlan": 99, "port_mode": True}
-    entities = transform.ports_to_entities(_tables(port_configs=[config]), device="sw-idf1")
+    entities = transform.ports_to_entities(_tables(port_configs=[config]), record=_port_record())
 
     port = entities[0]._kw["interface"]._kw
     assert port["untagged_vlan"]._kw == {"vid": 10, "name": "10"}
@@ -364,8 +374,7 @@ def test_ports_to_entities_rewrites_colon_ports_to_native_notation(stub_sdk) -> 
             port_capabilities=caps,
             lag_configs=[lag_config],
         ),
-        device="sw-idf1",
-        function="Fabric Engine",
+        record=_port_record(function="Fabric Engine"),
     )
 
     by_name = {e._kw["interface"]._kw["name"]: e._kw["interface"]._kw for e in entities}
@@ -380,8 +389,7 @@ def test_ports_to_entities_keeps_colon_ports_for_switch_engine(stub_sdk) -> None
     config = {"asset_device_id": "cs-uuid-42", "asset_interface_id": "if-uuid-52", "name": "1:52"}
     entities = transform.ports_to_entities(
         _tables(port_configs=[config], port_states=[], vlan_properties=[]),
-        device="sw-idf1",
-        function="Switch Engine",
+        record=_port_record(function="Switch Engine"),
     )
 
     assert entities[0]._kw["interface"]._kw["name"] == "1:52"
@@ -404,7 +412,10 @@ def test_ports_to_entities_emits_interface_ip_addresses(stub_sdk) -> None:
             "is_primary": False,
         },
     ]
-    entities = transform.ports_to_entities(_tables(vlan_properties=[], interface_ips=ips), device="sw-idf1")
+    entities = transform.ports_to_entities(
+        _tables(vlan_properties=[], interface_ips=ips),
+        record=_port_record(),
+    )
 
     assert entities[0]._kw["interface"]._kw["name"] == "1/1"
     ip_entities = [e._kw["ip_address"]._kw for e in entities if "ip_address" in e._kw]
@@ -426,7 +437,7 @@ def test_ports_to_entities_ip_stub_omits_type_when_port_state_missing(stub_sdk) 
     ]
     entities = transform.ports_to_entities(
         _tables(port_states=[], vlan_properties=[], interface_ips=ips),
-        device="sw-idf1",
+        record=_port_record(),
     )
 
     port = entities[0]._kw["interface"]._kw
@@ -458,7 +469,7 @@ def test_ports_to_entities_emits_svi_ips_via_vlan_interface_name(stub_sdk) -> No
     }
     entities = transform.ports_to_entities(
         _tables(vlan_properties=[svi_vlan], interface_ips=ips),
-        device="sw-idf1",
+        record=_port_record(),
     )
 
     # Physical port 1/1 from default fixtures, then the SVI interface + its IP.
@@ -485,7 +496,10 @@ def test_ports_to_entities_skips_orphan_ips_without_known_interface_name(stub_sd
             "interface_name": "vlan10",
         },
     ]
-    entities = transform.ports_to_entities(_tables(vlan_properties=[], interface_ips=ips), device="sw-idf1")
+    entities = transform.ports_to_entities(
+        _tables(vlan_properties=[], interface_ips=ips),
+        record=_port_record(),
+    )
 
     assert not [e for e in entities if "ip_address" in e._kw]
     assert not [e for e in entities if "interface" in e._kw and e._kw["interface"]._kw["name"] == "vlan10"]
@@ -499,14 +513,17 @@ def test_ports_to_entities_skips_interface_ips_without_mask_length(stub_sdk) -> 
             "is_primary": True,
         },
     ]
-    entities = transform.ports_to_entities(_tables(vlan_properties=[], interface_ips=ips), device="sw-idf1")
+    entities = transform.ports_to_entities(
+        _tables(vlan_properties=[], interface_ips=ips),
+        record=_port_record(),
+    )
 
     assert not [e for e in entities if "ip_address" in e._kw]
 
 
 def test_ports_to_entities_untagged_only_is_access_mode(stub_sdk) -> None:
     vlan = {**VLAN_PROPERTIES, "vlans": [{"vlan_number": 10}]}
-    entities = transform.ports_to_entities(_tables(vlan_properties=[vlan]), device="sw-idf1")
+    entities = transform.ports_to_entities(_tables(vlan_properties=[vlan]), record=_port_record())
 
     port = entities[0]._kw["interface"]._kw
     assert port["mode"] == "access"
@@ -518,7 +535,11 @@ def test_ports_to_entities_omits_mode_when_no_vlan_rows(stub_sdk) -> None:
     """FLEX-UNI/Fabric-Attach ports can be mapped to an I-SID instead of a
     VLAN -- inventing an access mode would misrepresent them.
     """
-    port = transform.ports_to_entities(_tables(vlan_properties=[]), device="sw-idf1")[0]._kw["interface"]._kw
+    port = (
+        transform.ports_to_entities(_tables(vlan_properties=[]), record=_port_record())[0]
+        ._kw["interface"]
+        ._kw
+    )
     assert "mode" not in port
     assert "untagged_vlan" not in port
     assert "tagged_vlans" not in port
@@ -531,7 +552,7 @@ def test_ports_to_entities_omits_reserved_untagged_vlan(stub_sdk) -> None:
         "port_vlan": 4094,
         "vlans": [{"vlan_number": 10}, {"vlan_number": 4094}],
     }
-    entities = transform.ports_to_entities(_tables(vlan_properties=[vlan]), device="sw-idf1")
+    entities = transform.ports_to_entities(_tables(vlan_properties=[vlan]), record=_port_record())
     port = entities[0]._kw["interface"]._kw
     assert "untagged_vlan" not in port
     assert [v._kw["vid"] for v in port["tagged_vlans"]] == [10]
@@ -550,7 +571,7 @@ def test_ports_to_entities_strips_reserved_tagged_vids(stub_sdk) -> None:
             {"vlan_number": 4094},
         ],
     }
-    entities = transform.ports_to_entities(_tables(vlan_properties=[vlan]), device="sw-idf1")
+    entities = transform.ports_to_entities(_tables(vlan_properties=[vlan]), record=_port_record())
     port = entities[0]._kw["interface"]._kw
     assert port["untagged_vlan"]._kw == {"vid": 10, "name": "10"}
     assert [v._kw["vid"] for v in port["tagged_vlans"]] == [20]
@@ -565,7 +586,9 @@ def test_ports_to_entities_omits_vlan_and_mode_when_only_reserved(stub_sdk) -> N
         "vlans": [{"vlan_number": 4094}],
     }
     port = (
-        transform.ports_to_entities(_tables(vlan_properties=[vlan]), device="sw-idf1")[0]._kw["interface"]._kw
+        transform.ports_to_entities(_tables(vlan_properties=[vlan]), record=_port_record())[0]
+        ._kw["interface"]
+        ._kw
     )
     assert "mode" not in port
     assert "untagged_vlan" not in port
@@ -581,7 +604,7 @@ def test_ports_to_entities_ports_join_on_interface_id_not_row_order(stub_sdk) ->
             port_states=[state2, PORT_STATE],  # deliberately reversed order
             vlan_properties=[],
         ),
-        device="sw-idf1",
+        record=_port_record(),
     )
 
     ports = {e._kw["interface"]._kw["name"]: e._kw["interface"]._kw for e in entities}
@@ -595,10 +618,11 @@ def test_ports_to_entities_nests_device_site_role_and_type(stub_sdk) -> None:
     """Diode generate-diff requires nested Device site/role/device_type."""
     entities = transform.ports_to_entities(
         _tables(vlan_properties=[]),
-        device="sw-idf1",
-        function="Fabric Engine",
-        site_name="Campus",
-        product_type="FabricEngine_5320_48P_8XE",
+        record=_port_record(
+            function="Fabric Engine",
+            site_name="Campus",
+            product_type="FabricEngine_5320_48P_8XE",
+        ),
     )
     device = entities[0]._kw["interface"]._kw["device"]._kw
     assert device["name"] == "sw-idf1"
@@ -611,7 +635,7 @@ def test_ports_to_entities_warns_on_conflicting_port_vlan(stub_sdk, caplog) -> N
     vlan_a = {**VLAN_PROPERTIES, "port_vlan": 10, "vlans": [{"vlan_number": 10}]}
     vlan_b = {**VLAN_PROPERTIES, "port_vlan": 20, "vlans": [{"vlan_number": 20}]}
     port = (
-        transform.ports_to_entities(_tables(vlan_properties=[vlan_a, vlan_b]), device="sw-idf1")[0]
+        transform.ports_to_entities(_tables(vlan_properties=[vlan_a, vlan_b]), record=_port_record())[0]
         ._kw["interface"]
         ._kw
     )
@@ -628,6 +652,9 @@ def test_ports_to_entities_accepts_string_mask_length(stub_sdk) -> None:
             "is_primary": True,
         },
     ]
-    entities = transform.ports_to_entities(_tables(vlan_properties=[], interface_ips=ips), device="sw-idf1")
+    entities = transform.ports_to_entities(
+        _tables(vlan_properties=[], interface_ips=ips),
+        record=_port_record(),
+    )
     ip_entities = [e._kw["ip_address"]._kw for e in entities if "ip_address" in e._kw]
     assert ip_entities[0]["address"] == "10.0.0.2/24"

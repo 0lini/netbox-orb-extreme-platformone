@@ -5,10 +5,9 @@ underlying data; fields with no Platform ONE equivalent are never asserted.
 Device identity uses the native `serial` field plus deterministic names
 (see `identity`), with `platformone_*` custom fields carried as provenance.
 
-Callers pass "device records" pre-joined by backend.py:
-{"asset": <Assets Device>, "cs_device_id": str | None,
- "cs_device": <ConfigState AssetDevice> | None,
- "location": <AssetLocation> | None}.
+Callers pass `identity.DeviceRecord` values, produced by `extract.correlate`:
+an Assets device row joined with its ConfigState identity and location, with
+name / site / OS family exposed as derived properties.
 
 InferredCluster rows map via `virtual_chassis_to_entities`. LAG interfaces
 via `ports_to_entities`. AP radios and WLANs via `radios_to_entities`.

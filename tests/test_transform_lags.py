@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from orb_extreme_platformone import transform
 from tests.conftest import PORT_CONFIG, cf
-from tests.transform_helpers import _tables
+from tests.transform_helpers import _port_record, _tables
 
 LAG_CONFIG = {
     "id": "lag-cfg-1",
@@ -38,7 +38,7 @@ def test_ports_to_entities_maps_lag_parent_and_member_refs(stub_sdk) -> None:
             lag_configs=[LAG_CONFIG],
             lag_states=[LAG_STATE],
         ),
-        device="sw-idf1",
+        record=_port_record(),
     )
 
     ports = {e._kw["interface"]._kw["name"]: e._kw["interface"]._kw for e in entities}
@@ -57,7 +57,7 @@ def test_ports_to_entities_skips_lag_without_name(stub_sdk) -> None:
     lag = {**LAG_CONFIG, "name": None, "member_ports": []}
     entities = transform.ports_to_entities(
         _tables(port_configs=[], port_states=[], vlan_properties=[], lag_configs=[lag], lag_states=[]),
-        device="sw-idf1",
+        record=_port_record(),
     )
 
     assert entities == []
@@ -81,7 +81,7 @@ def test_ports_to_entities_uses_state_lag_name_for_config_members(stub_sdk) -> N
             lag_configs=[lag_config],
             lag_states=[lag_state],
         ),
-        device="sw-idf1",
+        record=_port_record(),
     )
 
     ports = {e._kw["interface"]._kw["name"]: e._kw["interface"]._kw for e in entities}
@@ -111,7 +111,7 @@ def test_ports_to_entities_uses_state_member_ports_when_config_omits_them(stub_s
             lag_configs=[lag_config],
             lag_states=[lag_state],
         ),
-        device="sw-idf1",
+        record=_port_record(),
     )
     ports = {e._kw["interface"]._kw["name"]: e._kw["interface"]._kw for e in entities}
     assert ports["1/1"]["lag"]._kw["name"] == "lag1"
@@ -133,7 +133,7 @@ def test_ports_to_entities_warns_on_dual_lag_membership(stub_sdk, caplog) -> Non
             lag_configs=[lag_a, lag_b],
             lag_states=[],
         ),
-        device="sw-idf1",
+        record=_port_record(),
     )
     ports = {e._kw["interface"]._kw["name"]: e._kw["interface"]._kw for e in entities}
     assert ports["1/1"]["lag"]._kw["name"] == "lag-a"
@@ -157,7 +157,7 @@ def test_ports_to_entities_emits_duplicate_port_when_lag_is_unnamed(stub_sdk) ->
             lag_configs=[lag],
             lag_states=[],
         ),
-        device="sw-idf1",
+        record=_port_record(),
     )
 
     ports = [e._kw["interface"]._kw for e in entities]
@@ -177,7 +177,7 @@ def test_ports_to_entities_skips_lag_members_without_port_rows(stub_sdk) -> None
             lag_configs=[LAG_CONFIG],
             lag_states=[],
         ),
-        device="sw-idf1",
+        record=_port_record(),
     )
 
     ports = {e._kw["interface"]._kw["name"]: e._kw["interface"]._kw for e in entities}
@@ -211,7 +211,7 @@ def test_ports_to_entities_skips_lag_row_duplicated_in_port_tables(stub_sdk) -> 
             lag_configs=[{**LAG_CONFIG, "member_ports": []}],
             lag_states=[],
         ),
-        device="sw-idf1",
+        record=_port_record(),
     )
 
     ports = [e._kw["interface"]._kw for e in entities]
@@ -243,7 +243,7 @@ def test_ports_to_entities_lag_applies_vlan_trunk_from_vlan_properties(stub_sdk)
             lag_configs=[{**LAG_CONFIG, "member_ports": []}],
             lag_states=[],
         ),
-        device="sw-idf1",
+        record=_port_record(),
     )
 
     lag = entities[0]._kw["interface"]._kw
@@ -262,7 +262,7 @@ def test_ports_to_entities_lag_ignores_false_enabled_from_lag_config(stub_sdk) -
     lag = {**LAG_CONFIG, "enabled": False, "member_ports": []}
     entities = transform.ports_to_entities(
         _tables(port_configs=[], port_states=[], vlan_properties=[], lag_configs=[lag], lag_states=[]),
-        device="sw-idf1",
+        record=_port_record(),
     )
     assert entities[0]._kw["interface"]._kw["enabled"] is True
 
@@ -284,7 +284,7 @@ def test_ports_to_entities_lag_enabled_follows_duplicate_port_config(stub_sdk) -
             lag_configs=[lag],
             lag_states=[],
         ),
-        device="sw-idf1",
+        record=_port_record(),
     )
     assert entities[0]._kw["interface"]._kw["enabled"] is False
 
@@ -305,7 +305,7 @@ def test_ports_to_entities_lag_vlan_joins_on_asset_interface_id(stub_sdk) -> Non
             lag_configs=[{**LAG_CONFIG, "member_ports": []}],
             lag_states=[],
         ),
-        device="sw-idf1",
+        record=_port_record(),
     )
     lag = entities[0]._kw["interface"]._kw
     assert lag["mode"] == "tagged"
@@ -328,7 +328,7 @@ def test_ports_to_entities_ignores_vlan_rows_without_asset_interface_id(stub_sdk
             lag_configs=[{**LAG_CONFIG, "member_ports": []}],
             lag_states=[],
         ),
-        device="sw-idf1",
+        record=_port_record(),
     )
     lag = entities[0]._kw["interface"]._kw
     assert "mode" not in lag
@@ -356,7 +356,7 @@ def test_ports_to_entities_lag_joins_poe_and_ip_like_physical_ports(stub_sdk) ->
             poe_states=[poe_state],
             interface_ips=ips,
         ),
-        device="sw-idf1",
+        record=_port_record(),
     )
 
     interfaces = [e._kw["interface"]._kw for e in entities if "interface" in e._kw]
@@ -381,7 +381,7 @@ def test_ports_to_entities_ignores_unmapped_lacp_fields_on_lag(stub_sdk) -> None
     }
     entities = transform.ports_to_entities(
         _tables(port_configs=[], port_states=[], vlan_properties=[], lag_configs=[lag], lag_states=[]),
-        device="sw-idf1",
+        record=_port_record(),
     )
 
     kwargs = entities[0]._kw["interface"]._kw

@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from orb_extreme_platformone.client import PlatformOneApiError, PlatformOneClient
+from orb_extreme_platformone.identity import DeviceRecord
 from orb_extreme_platformone.logging_context import get_logger
 
 if TYPE_CHECKING:
@@ -73,7 +74,11 @@ def correlate(assets: list[dict], cs_devices: list[dict]) -> dict[object, dict]:
     return matched
 
 
-def correlated_records(client: PlatformOneClient, assets: list[dict], policy_name: str) -> list[dict]:
+def correlated_records(
+    client: PlatformOneClient,
+    assets: list[dict],
+    policy_name: str,
+) -> list[DeviceRecord]:
     """Join each Assets device with its ConfigState identity + location.
 
     A ConfigState outage degrades to Assets-only data (flat site, no
@@ -115,11 +120,11 @@ def correlated_records(client: PlatformOneClient, assets: list[dict], policy_nam
         cs = cs_by_asset_id.get(asset_id) if asset_id is not None else None
         cs_device_id = str(cs["id"]) if cs and cs.get("id") else None
         records.append(
-            {
-                "asset": asset,
-                "cs_device_id": cs_device_id,
-                "cs_device": cs,
-                "location": locations.get(cs_device_id) if cs_device_id else None,
-            },
+            DeviceRecord(
+                asset=asset,
+                cs_device_id=cs_device_id,
+                cs_device=cs,
+                location=locations.get(cs_device_id) if cs_device_id else None,
+            ),
         )
     return records

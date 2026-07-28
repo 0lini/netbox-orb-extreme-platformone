@@ -12,7 +12,7 @@ from netboxlabs.diode.sdk.ingester import (
     Site,
 )
 
-from orb_extreme_platformone.identity import device_type_model_for, role_for
+from orb_extreme_platformone.identity import DeviceRecord, device_type_model_for, role_for
 from orb_extreme_platformone.logging_context import get_logger
 from orb_extreme_platformone.schema import (
     CF_CLUSTER_ID,
@@ -46,48 +46,29 @@ def _cf_text(value: str) -> CustomFieldValue:
     return CustomFieldValue(text=value)
 
 
-def _device_ref(
-    *,
-    name: str,
-    site_name: str | None = None,
-    function: str | None = None,
-    product_type: str | None = None,
-) -> Device:
+def _device_ref(record: DeviceRecord) -> Device:
     """Nested Device stub for Interface / IPAddress / VirtualChassis.master refs.
 
     Diode's generate-diff validates nested ``dcim.device`` against NetBox
     required fields (site, role, device_type) even when the device already
     exists. Name-only stubs therefore fail reconciliation (and for
     VirtualChassis, drop the whole chassis entity including its unique
-    ``platformone_cluster_id``). Mirror enough identity from the parent
-    Assets row to pass that check; top-level Device entities remain the
-    source of truth.
+    ``platformone_cluster_id``). Mirror enough identity from the record to pass
+    that check; top-level Device entities remain the source of truth.
     """
-    return Device(
-        name=name,
-        **_device_identity_fields(
-            function=function,
-            product_type=product_type,
-            site_name=site_name,
-        ),
-    )
+    return Device(name=record.name, **_device_identity_fields(record))
 
 
-def _device_identity_fields(
-    *,
-    function: str | None = None,
-    product_type: str | None = None,
-    site_name: str | None = None,
-) -> dict:
+def _device_identity_fields(record: DeviceRecord) -> dict:
     """Device identity fields needed by Diode nested refs and light updates."""
     kwargs: dict = {}
-    if site_name:
-        kwargs["site"] = Site(name=site_name)
-    role = role_for(function)
+    if record.site_name:
+        kwargs["site"] = Site(name=record.site_name)
+    role = role_for(record.function)
     if role:
         role_name, role_slug = role
         kwargs["role"] = DeviceRole(name=role_name, slug=role_slug)
-    model = device_type_model_for(product_type)
+    model = device_type_model_for(record.product_type)
     if model:
         kwargs["device_type"] = DeviceType(model=model, manufacturer=MANUFACTURER)
         kwargs["manufacturer"] = MANUFACTURER

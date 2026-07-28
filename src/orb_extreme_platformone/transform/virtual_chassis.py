@@ -2,15 +2,19 @@
 
 from __future__ import annotations
 
-from netboxlabs.diode.sdk.ingester import Device, Entity, VirtualChassis
+from typing import TYPE_CHECKING
 
-from orb_extreme_platformone.identity import device_name, resolve_location
+from netboxlabs.diode.sdk.ingester import Entity, VirtualChassis
 
 from .common import CF_CLUSTER_ID, PROVENANCE_TAGS, _cf_text, _device_ref, logger
 
 # A chassis name needs two distinct names so a shared placeholder ("Default")
 # cannot collapse every chassis to one NetBox name.
 _MIN_DISTINCT_NAMES = 2
+
+
+if TYPE_CHECKING:
+    from orb_extreme_platformone.identity import DeviceRecord
 
 
 def _virtual_chassis_name(cluster: dict, device_one_name: str, device_two_name: str) -> str | None:
@@ -31,28 +35,10 @@ def _virtual_chassis_name(cluster: dict, device_one_name: str, device_two_name: 
     return None
 
 
-def _master_ref(record: dict, name: str) -> Device:
-    """Nested Device stub for VirtualChassis.master (Diode-required fields).
-
-    Name-only master stubs fail Diode generate-diff the same way Interface
-    nested Devices do (site/role/device_type required). That failure drops the
-    whole VirtualChassis entity — including ``platformone_cluster_id`` — and
-    subsequent name-only membership refs create orphan duplicate chassis.
-    """
-    asset = record["asset"]
-    site_name, _ = resolve_location(record.get("location"), asset)
-    return _device_ref(
-        name=name,
-        site_name=site_name,
-        function=asset.get("function"),
-        product_type=asset.get("product_type"),
-    )
-
-
 def virtual_chassis_to_entities(
     clusters: list[dict],
     *,
-    records_by_cs_id: dict[str, dict],
+    records_by_cs_id: dict[str, DeviceRecord],
 ) -> tuple[list[Entity], dict[str, dict]]:
     """Map ConfigState InferredCluster rows to VirtualChassis entities + memberships.
 
@@ -83,8 +69,8 @@ def virtual_chassis_to_entities(
         if record_one is None or record_two is None:
             continue
 
-        name_one = device_name(record_one["asset"])
-        name_two = device_name(record_two["asset"])
+        name_one = record_one.name
+        name_two = record_two.name
         if not name_one or not name_two:
             logger.warning(
                 "Skipping InferredCluster %s: member device(s) have no Assets host_name",
@@ -114,7 +100,7 @@ def virtual_chassis_to_entities(
         cluster_id = str(cluster["id"]) if cluster.get("id") else None
         vc_kwargs: dict = {
             "name": chassis_name,
-            "master": _master_ref(record_one, name_one),
+            "master": _device_ref(record_one),
             "tags": PROVENANCE_TAGS,
         }
         if cluster_id:

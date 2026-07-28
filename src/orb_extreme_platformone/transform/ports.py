@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from orb_extreme_platformone.identity import SLASH_PORT_FUNCTIONS
+from orb_extreme_platformone.identity import SLASH_PORT_FUNCTIONS, DeviceRecord
 
 from .common import _device_ref
 from .ips import _interface_names_by_id, _orphan_ip_entities, primary_ips_from_tables
@@ -23,14 +23,7 @@ __all__ = [
 ]
 
 
-def ports_to_entities(
-    tables: dict[str, list[dict]],
-    *,
-    device: str,
-    function: str | None = None,
-    site_name: str | None = None,
-    product_type: str | None = None,
-) -> list[Entity]:
+def ports_to_entities(tables: dict[str, list[dict]], *, record: DeviceRecord) -> list[Entity]:
     """Map one switch's ConfigState port + LAG + VLAN tables to Diode entities.
 
     `tables` holds the device's "port_configs", "port_states",
@@ -51,18 +44,15 @@ def ports_to_entities(
     Nested Interface ``device`` refs include site/role/device_type when
     known — Diode rejects name-only Device stubs during generate-diff.
 
-    `function` (the Assets OS family) rewrites ConfigState's slot:port
-    notation to the OS-native form (1:52 -> 1/52 on Fabric Engine / VOSS)
-    before any joining, so every emitted name and cross-reference agrees.
+    The record's OS family rewrites ConfigState's slot:port notation to the
+    OS-native form (1:52 -> 1/52 on Fabric Engine / VOSS) before any joining,
+    so every emitted name and cross-reference agrees. Callers must only pass
+    records that have a name (see backend._fanout_context).
     """
+    function = record.function
     if function and function.upper() in SLASH_PORT_FUNCTIONS:
         tables = _native_port_name_tables(tables, function)
-    device_ref = _device_ref(
-        name=device,
-        site_name=site_name,
-        function=function,
-        product_type=product_type,
-    )
+    device_ref = _device_ref(record)
     joined = JoinedPortTables.from_tables(tables)
 
     lag_entities, lag_names, lag_interface_ids, membership, emitted_keys = _lag_entities(

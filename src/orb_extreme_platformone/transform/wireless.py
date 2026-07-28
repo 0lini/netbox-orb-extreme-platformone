@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from typing import TYPE_CHECKING
 
 from netboxlabs.diode.sdk.ingester import Device, Entity, Interface, WirelessLAN
 
@@ -20,6 +21,10 @@ from .wireless_rf import (
 
 # Keys `radios_to_entities` reads — derived from the extract catalog.
 WIRELESS_ENTITY_TABLE_KEYS = frozenset(WIRELESS_TABLES)
+
+
+if TYPE_CHECKING:
+    from orb_extreme_platformone.identity import DeviceRecord
 
 
 def _split_if_names(value) -> list[str]:
@@ -118,17 +123,16 @@ def _link_ssid_radios(
 def radios_to_entities(
     tables_by_device: dict[str, dict[str, list[dict]]],
     *,
-    device_names: dict[str, str],
-    device_meta: dict[str, dict] | None = None,
+    records: dict[str, DeviceRecord],
 ) -> list[Entity]:
     """Map ConfigState wireless + SSID tables to Interface and WirelessLAN entities.
 
     `tables_by_device` maps ConfigState AssetDevice UUID -> wireless table
     buckets (`wireless_interfaces`, `wireless_states`, `ssid_configs`,
-    `ssid_states`). `device_names` maps the same UUID to the NetBox device
-    name already used for Device entities. Optional `device_meta` supplies
-    per-device ``site_name`` / ``function`` / ``product_type`` so nested
-    Interface ``device`` refs pass Diode generate-diff (same as switch ports).
+    `ssid_states`). `records` maps the same UUID to the device record, which
+    supplies both the NetBox name and the site/role/device_type a nested
+    Interface ``device`` ref needs to pass Diode generate-diff. Devices absent
+    from `records` are skipped.
 
     Each radio becomes an Interface with native RF fields (`rf_role`,
     `tx_power`, `rf_channel_frequency`, `rf_channel_width`, `type`,
@@ -141,10 +145,9 @@ def radios_to_entities(
     wlans: dict[str, dict] = {}
     ssids_by_radio: dict[tuple[str, str], list[str]] = defaultdict(list)
     radio_rows: dict[tuple[str, str], dict] = {}
-    device_meta = device_meta or {}
 
     for device_id, tables in tables_by_device.items():
-        if device_id not in device_names:
+        if device_id not in records:
             continue
         configs = tables.get("wireless_interfaces") or []
         states = tables.get("wireless_states") or []
@@ -174,7 +177,7 @@ def radios_to_entities(
                 continue
             name_to_key[name] = key
             radio_rows[(device_id, key)] = {
-                "device": device_names[device_id],
+                "record": records[device_id],
                 "name": name,
                 "config": config,
                 "states": radio["states"],
@@ -228,21 +231,14 @@ def radios_to_entities(
     ]
     for (device_id, key), radio in sorted(
         radio_rows.items(),
-        key=lambda item: (item[1]["device"], item[1]["name"]),
+        key=lambda item: (item[1]["record"].name or "", item[1]["name"]),
     ):
         state = _primary_wireless_state(radio["states"])
-        meta = device_meta.get(device_id) or {}
-        device_ref = _device_ref(
-            name=radio["device"],
-            site_name=meta.get("site_name"),
-            function=meta.get("function"),
-            product_type=meta.get("product_type"),
-        )
         entities.append(
             Entity(
                 interface=Interface(
                     **_radio_interface_kwargs(
-                        device=device_ref,
+                        device=_device_ref(radio["record"]),
                         name=radio["name"],
                         config=radio["config"],
                         state=state,

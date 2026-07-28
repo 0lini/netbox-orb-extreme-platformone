@@ -9,6 +9,8 @@ that resolve to neither (Platform ONE assigns every device a site).
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
+from functools import cached_property
 
 # Assets API `Device.function` values that are switch OSes, mapped to the
 # canonical OS-family name used in the NetBox Platform.
@@ -191,3 +193,71 @@ def expand_location_paths(
                 seen.add(key)
                 ancestors.append(key)
     return ancestors
+
+
+@dataclass(frozen=True)
+class DeviceRecord:
+    """One Assets device joined with its ConfigState identity and location.
+
+    The pipeline's unit of work: extract produces these, transform consumes
+    them. Derived values (name, site, OS family) are properties rather than a
+    parallel "meta" dict, so there is one place they can disagree — none.
+
+    ``asset`` is the Assets API Device row; ``cs_device`` and ``location`` are
+    the correlated ConfigState AssetDevice / AssetLocation rows, absent when
+    ConfigState has no record for this serial yet.
+    """
+
+    asset: dict
+    cs_device_id: str | None = None
+    cs_device: dict | None = None
+    location: dict | None = None
+
+    @property
+    def name(self) -> str | None:
+        """NetBox Device.name, or None when Platform ONE omits the hostname."""
+        return device_name(self.asset)
+
+    @property
+    def label(self) -> str:
+        """Short identifier for logs, usable even when the hostname is absent."""
+        return asset_label(self.asset)
+
+    @property
+    def function(self) -> str | None:
+        """Assets `Device.function` — the OS family, not a callable."""
+        return self.asset.get("function")
+
+    @property
+    def product_type(self) -> str | None:
+        """Assets `product_type`, mapped to a NetBox device-type model."""
+        return self.asset.get("product_type")
+
+    @property
+    def asset_ip(self) -> str | None:
+        """Bare management IP from Assets; never asserted as a primary IP."""
+        return self.asset.get("ip_address")
+
+    @property
+    def is_switch(self) -> bool:
+        """Whether the port fan-out applies to this device."""
+        return is_switch(self.function)
+
+    @property
+    def is_ap(self) -> bool:
+        """Whether the radio/WLAN fan-out applies to this device."""
+        return is_ap(self.function)
+
+    @cached_property
+    def _resolved_location(self) -> tuple[str | None, list[str]]:
+        return resolve_location(self.location, self.asset)
+
+    @property
+    def site_name(self) -> str | None:
+        """Resolved NetBox Site name; None when neither source names one."""
+        return self._resolved_location[0]
+
+    @property
+    def location_path(self) -> list[str]:
+        """Ordered Building -> Floor chain, empty when ConfigState has none."""
+        return self._resolved_location[1]
