@@ -66,7 +66,8 @@ def test_ports_to_entities_state_only_port_still_syncs_link_state(stub_sdk) -> N
     """
     down = {**PORT_STATE, "oper_state": 2}
     entities = transform.ports_to_entities(
-        _tables(port_configs=[], port_states=[down], vlan_properties=[]), device="sw-idf1",
+        _tables(port_configs=[], port_states=[down], vlan_properties=[]),
+        device="sw-idf1",
     )
 
     port = entities[0]._kw["interface"]._kw
@@ -78,7 +79,8 @@ def test_ports_to_entities_admin_down_and_link_down_are_independent(stub_sdk) ->
     config = {**PORT_CONFIG, "enabled": False}
     state = {**PORT_STATE, "oper_state": 2}
     entities = transform.ports_to_entities(
-        _tables(port_configs=[config], port_states=[state], vlan_properties=[]), device="sw-idf1",
+        _tables(port_configs=[config], port_states=[state], vlan_properties=[]),
+        device="sw-idf1",
     )
 
     port = entities[0]._kw["interface"]._kw
@@ -133,7 +135,8 @@ def test_ports_to_entities_maps_mgmt_only_from_capabilities(stub_sdk) -> None:
         },
     ]
     entities = transform.ports_to_entities(
-        _tables(vlan_properties=[], port_capabilities=caps), device="sw-idf1",
+        _tables(vlan_properties=[], port_capabilities=caps),
+        device="sw-idf1",
     )
 
     assert entities[0]._kw["interface"]._kw["mgmt_only"] is True
@@ -151,7 +154,8 @@ def test_ports_to_entities_capabilities_scoped_per_device(stub_sdk, caplog) -> N
         {"asset_device_id": "cs-uuid-42", "port_name": "1/1", "management_port": False},
     ]
     entities = transform.ports_to_entities(
-        _tables(vlan_properties=[], port_capabilities=caps), device="sw-idf1",
+        _tables(vlan_properties=[], port_capabilities=caps),
+        device="sw-idf1",
     )
 
     assert entities[0]._kw["interface"]._kw["mgmt_only"] is False
@@ -164,7 +168,8 @@ def test_ports_to_entities_warns_on_per_device_capability_duplicates(stub_sdk, c
         {"asset_device_id": "cs-uuid-42", "port_name": "1/1", "management_port": False},
     ]
     entities = transform.ports_to_entities(
-        _tables(vlan_properties=[], port_capabilities=caps), device="sw-idf1",
+        _tables(vlan_properties=[], port_capabilities=caps),
+        device="sw-idf1",
     )
 
     assert entities[0]._kw["interface"]._kw["mgmt_only"] is True
@@ -316,7 +321,8 @@ def test_ports_to_entities_does_not_use_native_vlan_without_vlan_properties(stub
     """VLANs come only from vlan-properties — no AssetPortConfig.native_vlan invent."""
     config = {**PORT_CONFIG, "native_vlan": 99, "port_mode": True}
     entities = transform.ports_to_entities(
-        _tables(port_configs=[config], vlan_properties=[]), device="sw-idf1",
+        _tables(port_configs=[config], vlan_properties=[]),
+        device="sw-idf1",
     )
 
     port = entities[0]._kw["interface"]._kw
@@ -419,7 +425,8 @@ def test_ports_to_entities_ip_stub_omits_type_when_port_state_missing(stub_sdk) 
         },
     ]
     entities = transform.ports_to_entities(
-        _tables(port_states=[], vlan_properties=[], interface_ips=ips), device="sw-idf1",
+        _tables(port_states=[], vlan_properties=[], interface_ips=ips),
+        device="sw-idf1",
     )
 
     port = entities[0]._kw["interface"]._kw
@@ -450,7 +457,8 @@ def test_ports_to_entities_emits_svi_ips_via_vlan_interface_name(stub_sdk) -> No
         "vlans": [{"vlan_number": 10}],
     }
     entities = transform.ports_to_entities(
-        _tables(vlan_properties=[svi_vlan], interface_ips=ips), device="sw-idf1",
+        _tables(vlan_properties=[svi_vlan], interface_ips=ips),
+        device="sw-idf1",
     )
 
     # Physical port 1/1 from default fixtures, then the SVI interface + its IP.

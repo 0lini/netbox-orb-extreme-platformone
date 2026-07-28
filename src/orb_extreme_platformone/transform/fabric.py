@@ -39,7 +39,9 @@ def device_fabric_custom_fields(tables: dict[str, list[dict]]) -> dict:
     instances = tables.get("spbm_instances") or []
 
     area = _first_str(configs, "manual_area_address", "area_name") or _first_str(
-        states, "default_area_address", "dynamically_learned_area",
+        states,
+        "default_area_address",
+        "dynamically_learned_area",
     )
     system_id = _first_str(configs, "sys_id")
     nickname = _first_str(instances, "node_nick_name") or _first_str(configs, "area_vnode_nickname")

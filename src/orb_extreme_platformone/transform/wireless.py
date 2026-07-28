@@ -155,7 +155,9 @@ def radios_to_entities(
         configs_by_key = _by_key(configs)
         for key in configs_by_key:
             radios.setdefault(key, {"config": {}, "states": []})["config"] = _first_row(
-                configs_by_key, key, table="wireless_interfaces",
+                configs_by_key,
+                key,
+                table="wireless_interfaces",
             )
         for row in states:
             key = _wireless_radio_key(row)
@@ -225,7 +227,8 @@ def radios_to_entities(
         for ssid, meta in sorted(wlans.items())
     ]
     for (device_id, key), radio in sorted(
-        radio_rows.items(), key=lambda item: (item[1]["device"], item[1]["name"]),
+        radio_rows.items(),
+        key=lambda item: (item[1]["device"], item[1]["name"]),
     ):
         state = _primary_wireless_state(radio["states"])
         meta = device_meta.get(device_id) or {}

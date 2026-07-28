@@ -231,7 +231,11 @@ def test_radios_to_entities_skips_devices_missing_from_device_names(stub_sdk) ->
     ],
 )
 def test_radios_to_entities_accepts_band_enum_style_labels(
-    stub_sdk, band, channel, radio_mode, expected_mhz,
+    stub_sdk,
+    band,
+    channel,
+    radio_mode,
+    expected_mhz,
 ) -> None:
     tables = _wireless_tables(
         state={"band": band, "channel": channel, "channel_width": 20, "radio_mode": radio_mode},
@@ -254,7 +258,10 @@ def test_radios_to_entities_accepts_band_enum_style_labels(
     ],
 )
 def test_radios_to_entities_maps_ssid_encryption_to_auth(
-    stub_sdk, encryption, auth_type, auth_cipher,
+    stub_sdk,
+    encryption,
+    auth_type,
+    auth_cipher,
 ) -> None:
     ssid_state = {"asset_device_id": "cs-ap-1", "name": "Corp", "if_names": "wifi0", "encryption": encryption}
     tables = {

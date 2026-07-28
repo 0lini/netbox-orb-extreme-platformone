@@ -93,7 +93,10 @@ def test_ensure_schema_is_idempotent_when_definitions_exist() -> None:
 def test_ensure_schema_patches_unique_onto_existing_fields() -> None:
     """Fields created by a pre-uniqueness bootstrap must gain the flag."""
     responses.add(
-        responses.GET, CF_URL, json={"count": 1, "results": [{"id": 7, "unique": False}]}, status=200,
+        responses.GET,
+        CF_URL,
+        json={"count": 1, "results": [{"id": 7, "unique": False}]},
+        status=200,
     )
     responses.add(responses.PATCH, f"{CF_URL}7/", json={}, status=200)
     responses.add(responses.GET, TAG_URL, json={"count": 1, "results": [{"id": 2}]}, status=200)

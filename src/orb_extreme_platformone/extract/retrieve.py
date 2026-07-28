@@ -18,7 +18,8 @@ TableCatalog = dict[str, tuple[str, str]]
 
 
 def retrieve_parallel(
-    client: PlatformOneClient, jobs: list[tuple[str, dict]],
+    client: PlatformOneClient,
+    jobs: list[tuple[str, dict]],
 ) -> list[tuple[str, list[dict] | None, PlatformOneApiError | None]]:
     """Run independent ConfigState retrieves concurrently.
 

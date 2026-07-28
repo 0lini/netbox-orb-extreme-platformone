@@ -252,7 +252,9 @@ class Backend(WorkerBackend):
         # entities so primary_ip can use ConfigState interface CIDRs and so
         # Device CFs can carry ISIS area / system id / SPBM nickname.
         port_entities, primary_ips_by_cs_id, fabric_by_cs_id = self._port_entities(
-            client, scoped, policy_name,
+            client,
+            scoped,
+            policy_name,
         )
         radio_entities = self._radio_entities(client, scoped, policy_name)
         # Emit Devices *without* primary_ip* first so serial / custom fields are
@@ -274,7 +276,9 @@ class Backend(WorkerBackend):
 
     @staticmethod
     def _virtual_chassis_entities(
-        client: PlatformOneClient, records: list[dict], policy_name: str,
+        client: PlatformOneClient,
+        records: list[dict],
+        policy_name: str,
     ) -> tuple[list[Entity], dict[str, dict]]:
         """Fetch InferredCluster and map to VirtualChassis + memberships.
 
@@ -323,7 +327,9 @@ class Backend(WorkerBackend):
 
     @staticmethod
     def _port_entities(
-        client: PlatformOneClient, records: list[dict], policy_name: str,
+        client: PlatformOneClient,
+        records: list[dict],
+        policy_name: str,
     ) -> tuple[list[Entity], dict[str, dict[str, str]], dict[str, dict]]:
         """Fetch port/LAG + fabric tables for in-scope switches and map entities.
 
