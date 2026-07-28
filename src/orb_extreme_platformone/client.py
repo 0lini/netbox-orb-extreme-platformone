@@ -1,4 +1,4 @@
-"""Thin Extreme Platform ONE client (token or user/pass auth) on plain `requests`.
+"""Extreme Platform ONE client: pagination and filter chunking over a transport.
 
 Covers the two API families this worker consumes, both served from the same
 host with the same bearer token:
@@ -10,9 +10,9 @@ host with the same bearer token:
     fields all take lists, and a response keyed by the table's schema name
     plus a `Pagination` object.
 
-Auth is either a static API token or username/password via ``POST /login``
-(ExtremeCloud IQ login on the same host). Password login refreshes the
-bearer token before expiry and retries once on 401.
+Credentials, sessions, retry/backoff and HTTP error mapping live in
+:mod:`orb_extreme_platformone.http`; this module changes when an API's
+pagination or filter shape changes, not when auth or transport does.
 
 Contracts verified against the Platform ONE OpenAPI specs; see
 tests/test_openapi_contract.py.
@@ -21,43 +21,41 @@ tests/test_openapi_contract.py.
 from __future__ import annotations
 
 import logging
-import re
-import threading
-import time
 from typing import TYPE_CHECKING
 
-import requests
-
-from .urls import require_https_url
+from .http import (
+    DEFAULT_BASE_URL,
+    DEFAULT_TIMEOUT_SECONDS,
+    PlatformOneApiError,
+    PlatformOneTransport,
+    truncate_error_body,
+)
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Callable, Iterator
 
-DEFAULT_BASE_URL = "https://cloudapi.extremecloudiq.com"
 ASSETS_PAGE_LIMIT = 500  # documented max for the Assets `limit` query param
 CONFIGSTATE_PAGE_SIZE = 500
 # Cap filter ID lists per GetRequest so large estates do not blow gateway /
 # body limits. retrieve() transparently chunks a single list-valued filter.
 CONFIGSTATE_FILTER_CHUNK_SIZE = 200
-# Keep API error text short so logs/exceptions do not retain full upstream
-# bodies (which can include sensitive diagnostics).
-_ERROR_BODY_LIMIT = 200
-# Refresh a minute early so a request never races token expiry.
-_TOKEN_REFRESH_SKEW_SECONDS = 60
-_DEFAULT_TOKEN_TTL_SECONDS = 86400
 # Guard against a server that never stops reporting more pages: without this a
 # misreported total_pages loops forever at one timeout per request.
 _MAX_PAGES = 10_000
-_ELLIPSIS = "..."
-_REDACTED = "[REDACTED]"
-# Some gateways echo the request body back in an error response. Redact the
-# secret-bearing JSON fields before that text reaches an exception or a log.
-_SECRET_FIELD_RE = re.compile(
-    r'("(?:password|client_secret|access_token|refresh_token|api_token|authorization)"\s*:\s*)"[^"]*"',
-    re.IGNORECASE,
-)
 
-logger = logging.getLogger("orb_extreme_platformone.client")
+__all__ = [
+    "ASSETS_PAGE_LIMIT",
+    "CONFIGSTATE_FILTER_CHUNK_SIZE",
+    "CONFIGSTATE_PAGE_SIZE",
+    "DEFAULT_BASE_URL",
+    "DEFAULT_TIMEOUT_SECONDS",
+    "PlatformOneApiError",
+    "PlatformOneClient",
+    "configstate_response_key",
+    "truncate_error_body",
+]
+
+logger = logging.getLogger(__name__)
 
 
 def _coerce_page_count(value, *, default: int) -> int:
@@ -84,26 +82,6 @@ def _chunked(values: list, size: int):
         yield values[index : index + size]
 
 
-class PlatformOneApiError(RuntimeError):
-    """Raised on a non-2xx response from a Platform ONE API."""
-
-
-def truncate_error_body(text: str, *, limit: int = _ERROR_BODY_LIMIT) -> str:
-    """Collapse whitespace, redact echoed secrets, and truncate for safe logging.
-
-    Truncation alone bounds length but not content: an upstream that echoes the
-    request body in an error response would otherwise put the login password
-    into the exception message and every log line that formats it.
-    """
-    cleaned = " ".join((text or "").split())
-    cleaned = _SECRET_FIELD_RE.sub(rf'\1"{_REDACTED}"', cleaned)
-    if len(cleaned) <= limit:
-        return cleaned
-    if limit <= len(_ELLIPSIS):
-        return cleaned[:limit]
-    return cleaned[: limit - len(_ELLIPSIS)] + _ELLIPSIS
-
-
 def configstate_response_key(table: str) -> str:
     """Derive a ConfigState response key from its table name.
 
@@ -114,12 +92,9 @@ def configstate_response_key(table: str) -> str:
 
 
 class PlatformOneClient:
-    """Minimal client for the Platform ONE endpoints this worker consumes.
+    """Paginated, chunked access to the Platform ONE endpoints this worker uses.
 
-    HTTP sessions are thread-local so independent ConfigState retrieves can
-    run concurrently (see extract parallel table retrieves) without sharing a
-    `requests.Session` across threads. Token state is guarded by a lock so
-    password-login refresh is safe across those threads.
+    Delegates every HTTP concern to :class:`~orb_extreme_platformone.http.PlatformOneTransport`.
     """
 
     def __init__(
@@ -129,136 +104,23 @@ class PlatformOneClient:
         api_token: str | None = None,
         username: str | None = None,
         password: str | None = None,
-        timeout: float = 60,
+        timeout: float = DEFAULT_TIMEOUT_SECONDS,
+        transport: PlatformOneTransport | None = None,
     ) -> None:
-        if not api_token and not (username and password):
-            msg = "PlatformOneClient requires api_token or username/password"
-            raise ValueError(msg)
-        self._base_url = require_https_url(base_url, what="PLATFORMONE_API_URL")
-        self._username = username
-        self._password = password
-        self._timeout = timeout
-        self._local = threading.local()
-        self._lock = threading.Lock()
-        self._headers = {
-            "Accept": "application/json",
-            "Content-Type": "application/json",
-        }
-        if api_token:
-            self._headers["Authorization"] = f"Bearer {api_token}"
-            # None = static API token (never expires from our side) until a
-            # login response sets it; password mode starts expired so the
-            # first request logs in.
-            self._token_expiry: float | None = None
-        else:
-            self._token_expiry = 0.0
-
-    def _session(self) -> requests.Session:
-        session = getattr(self._local, "session", None)
-        if session is None:
-            session = requests.Session()
-            self._local.session = session
-        return session
-
-    def _ensure_token_locked(self) -> None:
-        if self._token_expiry is None:
-            return
-        if time.time() < self._token_expiry:
-            return
-        if self._username and self._password:
-            self._login_locked()
-            return
-        msg = "No credentials available to authenticate with Platform ONE"
-        raise PlatformOneApiError(msg)
-
-    def _login_locked(self) -> None:
-        url = f"{self._base_url}/login"
-        payload = {"username": self._username, "password": self._password}
-        headers = {
-            "Accept": "application/json",
-            "Content-Type": "application/json",
-        }
-        # Fail closed on redirects so a 307 cannot replay the password body.
-        resp = self._session().post(
-            url,
-            headers=headers,
-            json=payload,
-            timeout=self._timeout,
-            allow_redirects=False,
-        )
-        if 300 <= resp.status_code < 400:
-            msg = f"Platform ONE login unexpected redirect ({resp.status_code})"
-            raise PlatformOneApiError(msg)
-        if resp.status_code != 200:
-            detail = truncate_error_body(resp.text)
-            msg = f"Platform ONE login failed ({resp.status_code}): {detail}"
-            raise PlatformOneApiError(msg)
-        data = resp.json()
-        access_token = data.get("access_token")
-        if not access_token:
-            msg = "Platform ONE login response did not contain an access_token"
-            raise PlatformOneApiError(msg)
-        self._headers["Authorization"] = f"Bearer {access_token}"
-        self._token_expiry = (
-            time.time() + data.get("expires_in", _DEFAULT_TOKEN_TTL_SECONDS) - _TOKEN_REFRESH_SKEW_SECONDS
+        self._transport = transport or PlatformOneTransport(
+            base_url=base_url,
+            api_token=api_token,
+            username=username,
+            password=password,
+            timeout=timeout,
         )
 
-    def _auth_headers(self) -> dict:
-        with self._lock:
-            self._ensure_token_locked()
-            return dict(self._headers)
+    def close(self) -> None:
+        """Release this thread's HTTP session at the end of a tick."""
+        self._transport.close()
 
     def _post(self, path: str, params: dict, body: dict) -> dict:
-        """POST `path`, re-logging in once on a 401 when using username/password.
-
-        Transport failures and invalid JSON are raised as ``PlatformOneApiError``
-        so ConfigState fan-out can degrade a single table instead of aborting
-        the tick on a timeout/connection blip.
-        """
-        url = f"{self._base_url}{path}"
-        for attempt in (1, 2):
-            headers = self._auth_headers()
-            try:
-                resp = self._session().post(
-                    url,
-                    headers=headers,
-                    params=params,
-                    json=body,
-                    timeout=self._timeout,
-                    allow_redirects=False,
-                )
-            except requests.RequestException as exc:
-                msg = f"Platform ONE API request failed for {path}: {exc}"
-                raise PlatformOneApiError(msg) from exc
-            if 300 <= resp.status_code < 400:
-                msg = f"Platform ONE API unexpected redirect {resp.status_code} for {path}"
-                raise PlatformOneApiError(
-                    msg,
-                )
-            if resp.status_code == 401 and attempt == 1 and self._username and self._password:
-                with self._lock:
-                    self._token_expiry = 0.0
-                    self._login_locked()
-                continue
-            if resp.status_code >= 400:
-                detail = truncate_error_body(resp.text)
-                msg = f"Platform ONE API error {resp.status_code} for {path}: {detail}"
-                raise PlatformOneApiError(msg)
-            try:
-                payload = resp.json()
-            except ValueError as exc:
-                msg = f"Platform ONE API returned invalid JSON for {path}: {exc}"
-                raise PlatformOneApiError(
-                    msg,
-                ) from exc
-            if not isinstance(payload, dict):
-                msg = f"Platform ONE API returned non-object JSON for {path}: {type(payload).__name__}"
-                raise PlatformOneApiError(
-                    msg,
-                )
-            return payload
-        msg = "unreachable"
-        raise AssertionError(msg)  # pragma: no cover
+        return self._transport.post(path, params, body)
 
     def _paginate(
         self,
@@ -269,7 +131,7 @@ class PlatformOneClient:
         size: int,
         body: dict,
         response_key: str,
-        total_pages,
+        total_pages: Callable[[dict, int], object],
     ) -> Iterator[dict]:
         page = 1
         while True:
@@ -280,7 +142,7 @@ class PlatformOneClient:
                     f"Platform ONE API returned non-list {response_key!r} for {path}: "
                     f"{type(records).__name__}"
                 )
-                raise PlatformOneApiError(msg)
+                raise PlatformOneApiError(msg, path=path)
             yield from records
             last_page = _coerce_page_count(total_pages(payload, page), default=page)
             if page >= last_page:
@@ -329,14 +191,18 @@ class PlatformOneClient:
             total_pages=lambda payload, page: (payload.get("Pagination") or {}).get("total_pages") or page,
         )
 
-    def _retrieve_chunk(
+    def _retrieve_chunk_or_error(
         self,
         table: str,
         filters: dict,
         *,
         page_size: int,
     ) -> list[dict] | PlatformOneApiError:
-        """Fetch one filter chunk to a list, or return the API error."""
+        """Fetch one filter chunk to a list, or return (not raise) the API error.
+
+        Returning the error keeps rows already fetched from earlier chunks; see
+        the caller in ``retrieve``.
+        """
         try:
             return list(self._retrieve_pages(table, filters, page_size=page_size))
         except PlatformOneApiError as exc:
@@ -357,37 +223,78 @@ class PlatformOneClient:
         The API rejects an empty filter body (code 1727) -- always pass at
         least one filter attribute with a non-empty list.
 
-        When exactly one filter value is a list longer than
-        ``filter_chunk_size``, the request is split into sequential chunked
-        retrieves so large device/interface ID sets stay within gateway limits.
+        When a filter value is a list longer than ``filter_chunk_size``, the
+        request is split into sequential chunked retrieves so large device /
+        interface ID sets stay within gateway limits. With several list-valued
+        filters the longest one is chunked.
         """
         filters = dict(filters or {})
         list_fields = [(key, value) for key, value in filters.items() if isinstance(value, list)]
-        if len(list_fields) == 1:
-            field, values = list_fields[0]
+        if list_fields:
+            field, values = max(list_fields, key=lambda item: len(item[1]))
+            if len(list_fields) > 1:
+                logger.warning(
+                    "ConfigState retrieve-%s has %d list filters; chunking only %r (%d values)",
+                    table,
+                    len(list_fields),
+                    field,
+                    len(values),
+                )
             if len(values) > filter_chunk_size > 0:
-                # Isolate per-chunk failures so a later transient error does not
-                # discard rows already fetched from earlier chunks (list() would
-                # otherwise drop everything when the iterator raises).
-                chunks = list(_chunked(list(values), filter_chunk_size))
-                errors: list[PlatformOneApiError] = []
-                completed = 0
-                for chunk in chunks:
-                    result = self._retrieve_chunk(table, {**filters, field: chunk}, page_size=page_size)
-                    if isinstance(result, PlatformOneApiError):
-                        errors.append(result)
-                        logger.warning(
-                            "ConfigState retrieve-%s filter chunk failed (%d IDs); "
-                            "continuing with remaining chunks: %s",
-                            table,
-                            len(chunk),
-                            result,
-                        )
-                        continue
-                    completed += 1
-                    yield from result
-                if errors and completed == 0:
-                    raise errors[0]
+                yield from self._retrieve_chunked(
+                    table,
+                    filters,
+                    field=field,
+                    values=list(values),
+                    page_size=page_size,
+                    filter_chunk_size=filter_chunk_size,
+                )
                 return
 
         yield from self._retrieve_pages(table, filters, page_size=page_size)
+
+    def _retrieve_chunked(
+        self,
+        table: str,
+        filters: dict,
+        *,
+        field: str,
+        values: list,
+        page_size: int,
+        filter_chunk_size: int,
+    ) -> Iterator[dict]:
+        """Retrieve one table in filter chunks, isolating per-chunk failures.
+
+        A later transient error must not discard rows already fetched from
+        earlier chunks (``list()`` would drop everything when the iterator
+        raises), so each chunk is collected independently and only an
+        all-chunks-failed outcome raises.
+        """
+        chunks = list(_chunked(values, filter_chunk_size))
+        errors: list[PlatformOneApiError] = []
+        completed = 0
+        for chunk in chunks:
+            result = self._retrieve_chunk_or_error(table, {**filters, field: chunk}, page_size=page_size)
+            if isinstance(result, PlatformOneApiError):
+                errors.append(result)
+                logger.warning(
+                    "ConfigState retrieve-%s filter chunk failed (%d IDs); "
+                    "continuing with remaining chunks: %s",
+                    table,
+                    len(chunk),
+                    result,
+                )
+                continue
+            completed += 1
+            yield from result
+        if errors and completed == 0:
+            codes = sorted({exc.status_code for exc in errors if exc.status_code is not None})
+            msg = (
+                f"ConfigState retrieve-{table}: all {len(chunks)} filter chunks failed "
+                f"(status codes: {codes or 'transport/parse errors'}); first error: {errors[0]}"
+            )
+            raise PlatformOneApiError(
+                msg,
+                status_code=errors[0].status_code,
+                path=f"/configstate/v1/retrieve-{table}",
+            ) from errors[0]

@@ -24,6 +24,20 @@ from orb_extreme_platformone.client import (
 ASSETS_URL = f"{DEFAULT_BASE_URL}/assets/v1/devices"
 
 
+def _distinct_chunks(calls) -> list[list[str]]:
+    """Filter-ID lists actually requested, deduped in order.
+
+    Transient failures are retried at the adapter, so a raw call count no
+    longer tells you how many chunks were attempted.
+    """
+    seen: list[list[str]] = []
+    for call in calls:
+        ids = json.loads(call.request.body)["asset_device_id"]
+        if ids not in seen:
+            seen.append(ids)
+    return seen
+
+
 def _client() -> PlatformOneClient:
     return PlatformOneClient(api_token="tok")
 
@@ -35,8 +49,10 @@ def test_client_requires_credentials() -> None:
 
 def test_client_accepts_username_password_without_token() -> None:
     client = PlatformOneClient(username="user", password="pass")
-    assert client._token_expiry == 0.0
-    assert "Authorization" not in client._headers
+    # Token state lives on the transport now; password mode starts expired so
+    # the first request logs in.
+    assert client._transport._token_expiry == 0.0
+    assert "Authorization" not in client._transport._headers
 
 
 def test_client_requires_https_base_url() -> None:
@@ -202,7 +218,8 @@ def test_retrieve_keeps_prior_chunk_rows_when_later_chunk_fails() -> None:
     rows = list(_client().retrieve("asset-port-state", {"asset_device_id": ids}))
 
     assert [r["name"] for r in rows] == ["a"]
-    assert len(responses.calls) == 2
+    # Count distinct chunks, not raw calls: the failing chunk is retried.
+    assert _distinct_chunks(responses.calls) == [chunk_a, chunk_b]
 
 
 @responses.activate
@@ -211,9 +228,9 @@ def test_retrieve_raises_when_every_filter_chunk_fails() -> None:
     ids = [f"id-{i}" for i in range(CONFIGSTATE_FILTER_CHUNK_SIZE + 1)]
     responses.add(responses.POST, url, json={"error": "nope"}, status=500)
 
-    with pytest.raises(PlatformOneApiError, match="500"):
+    with pytest.raises(PlatformOneApiError, match="all 2 filter chunks failed"):
         list(_client().retrieve("asset-port-state", {"asset_device_id": ids}))
-    assert len(responses.calls) == 2
+    assert len(_distinct_chunks(responses.calls)) == 2
 
 
 @responses.activate
