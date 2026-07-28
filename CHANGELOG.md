@@ -23,6 +23,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - ConfigState correlation no longer drops non-int Assets `device_id` values.
+- IP assignment stubs no longer re-assert `type=other` when the parent port
+  omitted `type` (config-only / port-state degrade).
+- Chunked ConfigState retrieves keep rows from successful filter chunks when a
+  later chunk fails (raise only if every chunk fails).
+- Wireless radio config joins warn on duplicate `asset_interface_id` rows
+  (first-row wins, same as ports) and use one primary-state helper for name/RF.
 
 ## [0.2.0] - 2026-07-25
 
