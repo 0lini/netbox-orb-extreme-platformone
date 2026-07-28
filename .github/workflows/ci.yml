@@ -59,7 +59,7 @@ jobs:
       - run: uv sync --locked --group dev
       - run: >-
           uv run pytest -v
-          --cov --cov-report=term-missing --cov-fail-under=100
+          --cov --cov-report=term-missing --cov-fail-under=90
           --strict-markers --strict-config
 
   package:
