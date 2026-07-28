@@ -6,7 +6,7 @@ from collections import defaultdict
 
 from netboxlabs.diode.sdk.ingester import Device, Entity, Interface, WirelessLAN
 
-from orb_extreme_platformone.extract.tables import WIRELESS_TABLES
+from orb_extreme_platformone.catalog import WIRELESS_TABLES
 
 from .common import _coerce_int, _device_ref, _interface_identity_kwargs, _normalized_mac
 from .port_join import _by_key, _first_row

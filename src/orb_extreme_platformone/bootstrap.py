@@ -8,20 +8,27 @@ from __future__ import annotations
 
 import requests
 
+from .schema import (
+    CF_CLUSTER_ID,
+    CF_DEVICE_ID,
+    CF_INTERFACE_ID,
+    CF_ISIS_AREA,
+    CF_ISIS_SYSTEM_ID,
+    CF_SPBM_NICKNAME,
+    TAG_NAMES,
+)
 from .urls import require_https_url
 
-# Per-object-type Platform ONE correlation keys with `unique` enforced
-# (NetBox >= 3.7): two NetBox objects of the same type claiming the same
-# Platform ONE id is always a sync defect worth failing loudly on. The
-# ConfigState AssetDevice UUID stays an internal join key (re-correlated by
-# serial every tick) and is not stored on Device.
-CF_DEVICE_ID = "platformone_device_id"
-CF_INTERFACE_ID = "platformone_interface_id"
-CF_CLUSTER_ID = "platformone_cluster_id"
-# Fabric identity parameters (not unique — shared areas / nicknames are fine).
-CF_ISIS_AREA = "platformone_isis_area"
-CF_ISIS_SYSTEM_ID = "platformone_isis_system_id"
-CF_SPBM_NICKNAME = "platformone_spbm_nickname"
+# Correlation-key and tag names live in `schema` so the pure transform layer
+# can stamp them onto entities without importing this HTTP module. The
+# definitions below (types, descriptions, `unique` enforcement) stay here:
+# they are NetBox schema, and only bootstrap writes them.
+#
+# `unique` is enforced (NetBox >= 3.7) on the per-object-type correlation
+# keys: two NetBox objects of the same type claiming the same Platform ONE id
+# is always a sync defect worth failing loudly on. The ConfigState AssetDevice
+# UUID stays an internal join key (re-correlated by serial every tick) and is
+# not stored on Device.
 
 CUSTOM_FIELDS = [
     {
@@ -99,22 +106,22 @@ CUSTOM_FIELDS = [
 
 TAGS = [
     {
-        "name": "extreme-networks",
-        "slug": "extreme-networks",
+        "name": TAG_NAMES[0],
+        "slug": TAG_NAMES[0],
         # Extreme Networks brand primary purple (#440099).
         "color": "440099",
         "description": "Objects synced from Extreme Networks via netbox-orb-extreme-platformone.",
     },
     {
-        "name": "platform-one",
-        "slug": "platform-one",
+        "name": TAG_NAMES[1],
+        "slug": TAG_NAMES[1],
         # Same Extreme brand purple as extreme-networks (#440099).
         "color": "440099",
         "description": "Objects synced from Extreme Platform ONE via netbox-orb-extreme-platformone.",
     },
     {
-        "name": "discovered",
-        "slug": "discovered",
+        "name": TAG_NAMES[2],
+        "slug": TAG_NAMES[2],
         # Neutral gray — provenance marker, not brand-colored.
         "color": "9e9e9e",
         "description": "Objects created by automated discovery rather than manually.",

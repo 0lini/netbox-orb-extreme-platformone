@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from orb_extreme_platformone.extract.tables import INTERFACE_ID_TABLES, PORT_TABLES
+from orb_extreme_platformone.catalog import INTERFACE_ID_TABLES, PORT_TABLES
 
 # Extreme Networks reserves VIDs 4060–4094 for internal use (e.g. Fabric
 # Engine). These are filtered from Interface untagged/tagged memberships.

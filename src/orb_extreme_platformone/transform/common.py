@@ -13,21 +13,33 @@ from netboxlabs.diode.sdk.ingester import (
     Site,
 )
 
-from orb_extreme_platformone import bootstrap
 from orb_extreme_platformone.identity import device_type_model_for, role_for
+from orb_extreme_platformone.schema import (
+    CF_CLUSTER_ID,
+    CF_DEVICE_ID,
+    CF_INTERFACE_ID,
+    CF_ISIS_AREA,
+    CF_ISIS_SYSTEM_ID,
+    CF_SPBM_NICKNAME,
+    MANUFACTURER,
+    TAG_NAMES,
+)
 
 logger = logging.getLogger("orb_extreme_platformone.transform")
 
-MANUFACTURER = "Extreme Networks"
+PROVENANCE_TAGS = list(TAG_NAMES)
 
-PROVENANCE_TAGS = [tag["name"] for tag in bootstrap.TAGS]
-
-CF_DEVICE_ID = bootstrap.CF_DEVICE_ID
-CF_INTERFACE_ID = bootstrap.CF_INTERFACE_ID
-CF_CLUSTER_ID = bootstrap.CF_CLUSTER_ID
-CF_ISIS_AREA = bootstrap.CF_ISIS_AREA
-CF_ISIS_SYSTEM_ID = bootstrap.CF_ISIS_SYSTEM_ID
-CF_SPBM_NICKNAME = bootstrap.CF_SPBM_NICKNAME
+__all__ = [
+    "CF_CLUSTER_ID",
+    "CF_DEVICE_ID",
+    "CF_INTERFACE_ID",
+    "CF_ISIS_AREA",
+    "CF_ISIS_SYSTEM_ID",
+    "CF_SPBM_NICKNAME",
+    "MANUFACTURER",
+    "PROVENANCE_TAGS",
+    "logger",
+]
 
 
 def _cf_text(value: str) -> CustomFieldValue:
