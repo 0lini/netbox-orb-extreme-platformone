@@ -254,7 +254,7 @@ def _fanout_context(
     policy_name: str,
     kind: str,
 ) -> FanoutContext:
-    """Common ConfigState fan-out indexes for per-device table extracts."""
+    """Build the ConfigState fan-out indexes for per-device table extracts."""
     records_by_cs_id = _records_by_cs_id(records, predicate=predicate)
     cs_device_ids = sorted(records_by_cs_id)
     device_names = _device_names(records_by_cs_id, policy_name=policy_name, kind=kind)
@@ -310,6 +310,7 @@ class Backend(WorkerBackend):
 
     @classmethod
     def describe(cls) -> Metadata:
+        """Report this worker's identity without constructing it."""
         return Metadata(
             name="orb_extreme_platformone",
             app_name=APP_NAME,

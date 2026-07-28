@@ -160,8 +160,10 @@ def _orphan_ip_entities(
     emitted_keys: dict[str, str],
     interface_names: dict[str, str],
 ) -> list[Entity]:
-    """IPs on interfaces that got no Interface entity above (e.g. VLAN/SVI
-    interfaces, which appear in vlan_properties but not the port tables).
+    """Emit IPs for interfaces that got no Interface entity above.
+
+    Covers VLAN/SVI interfaces, which appear in vlan_properties but not in the
+    port tables.
 
     Emits a minimal Interface first so the IPAddress has a real assigned
     object, then the IP entities. ``type=virtual`` for these non-port rows

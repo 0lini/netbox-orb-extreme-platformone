@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from netboxlabs.diode.sdk.ingester import Entity, VirtualChassis
+from netboxlabs.diode.sdk.ingester import Device, Entity, VirtualChassis
 
 from orb_extreme_platformone.identity import device_name, resolve_location
 
@@ -31,7 +31,7 @@ def _virtual_chassis_name(cluster: dict, device_one_name: str, device_two_name: 
     return None
 
 
-def _master_ref(record: dict, name: str):
+def _master_ref(record: dict, name: str) -> Device:
     """Nested Device stub for VirtualChassis.master (Diode-required fields).
 
     Name-only master stubs fail Diode generate-diff the same way Interface

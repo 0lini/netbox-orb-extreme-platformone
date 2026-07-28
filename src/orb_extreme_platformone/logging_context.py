@@ -25,6 +25,7 @@ class PolicyContextFilter(logging.Filter):
     """Attach the current policy name to every record as ``%(policy)s``."""
 
     def filter(self, record: logging.LogRecord) -> bool:
+        """Stamp the record and keep it."""
         record.policy = _policy_name.get()
         return True
 

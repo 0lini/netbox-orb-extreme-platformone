@@ -54,7 +54,7 @@ def _standalone_config() -> dict:
     }
 
 
-def _quote_values(value):
+def _quote_values(value: object) -> object:
     """Render every scalar as a string so the JSON dry-run output quotes all values."""
     if isinstance(value, dict):
         return {key: _quote_values(item) for key, item in value.items()}
@@ -66,6 +66,7 @@ def _quote_values(value):
 
 
 def main() -> None:
+    """Run one standalone extract/transform pass and print the entities."""
     logging.basicConfig(level=logging.INFO)
     _load_env_file()
     policy = Policy(config=Config(**_standalone_config()), scope={"sites": ["*"]})

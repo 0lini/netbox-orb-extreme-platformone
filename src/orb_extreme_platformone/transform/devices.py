@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from typing import TYPE_CHECKING
 
 from netboxlabs.diode.sdk.ingester import (
     Device,
@@ -20,6 +21,9 @@ from orb_extreme_platformone.identity import (
     platform_name,
     resolve_location,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 from .common import (
     CF_CLUSTER_ID,
@@ -119,7 +123,11 @@ def _device_kwargs(
     return kwargs
 
 
-def _iter_scoped_devices(records: list[dict], *, site_scope: set[str] | None):
+def _iter_scoped_devices(
+    records: list[dict],
+    *,
+    site_scope: set[str] | None,
+) -> Iterator[tuple[dict, str, list[str]]]:
     """Yield (record, site_name, location_path) for devices that pass scope.
 
     Single resolve_location pass used by both `scope_devices` and
@@ -185,9 +193,10 @@ def devices_to_entities(
     vc_memberships: dict[str, dict] | None = None,
     fabric_by_cs_id: dict[str, dict] | None = None,
 ) -> list[Entity]:
-    """Map device records to Diode entities: one Site per distinct site, one
-    nested Location per Building/Floor level in use, Devices, then
-    VirtualChassis (if any).
+    """Map device records to Diode Site, Location, Device and VirtualChassis entities.
+
+    One Site per distinct site, one nested Location per Building/Floor level in
+    use, then Devices, then VirtualChassis (if any).
 
     When the caller has already run `scope_devices` (backend tick path), pass
     `site_scope=None` so this does not re-filter by site. When calling

@@ -73,7 +73,7 @@ def _coerce_page_count(value, *, default: int) -> int:
     return default
 
 
-def _chunked(values: list, size: int):
+def _chunked(values: list, size: int) -> Iterator[list]:
     """Yield successive slices of `values` with at most `size` items."""
     if size <= 0:
         yield values

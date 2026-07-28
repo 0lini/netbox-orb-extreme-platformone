@@ -177,10 +177,10 @@ def resolve_location(asset_location: dict | None, assets_device: dict) -> tuple[
 def expand_location_paths(
     paths: set[tuple[str, tuple[str, ...]]],
 ) -> list[tuple[str, tuple[str, ...]]]:
-    """Expand (site_name, location_path) tuples into every distinct
-    (site_name, ancestor_path) pair in the hierarchy, deduped, with each
-    path's ancestors ordered before itself so a caller can thread `parent`
-    references through the result in a single pass.
+    """Expand location paths into every distinct (site_name, ancestor_path) pair.
+
+    Deduped, with each path's ancestors ordered before itself so a caller can
+    thread `parent` references through the result in a single pass.
     """
     seen: set[tuple[str, tuple[str, ...]]] = set()
     ancestors: list[tuple[str, tuple[str, ...]]] = []

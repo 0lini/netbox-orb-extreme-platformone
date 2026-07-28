@@ -9,7 +9,7 @@ from .port_constants import EXTREME_RESERVED_VLAN_VID_MAX, EXTREME_RESERVED_VLAN
 
 
 def _is_extreme_reserved_vlan(vid: int) -> bool:
-    """True for Extreme reserved internal VLAN IDs (4060–4094 inclusive)."""
+    """Report whether a VID is in the Extreme reserved internal range (4060–4094)."""
     return EXTREME_RESERVED_VLAN_VID_MIN <= vid <= EXTREME_RESERVED_VLAN_VID_MAX
 
 
