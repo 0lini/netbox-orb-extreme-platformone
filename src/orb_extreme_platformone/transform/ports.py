@@ -11,7 +11,7 @@ from .ips import _interface_names_by_id, _orphan_ip_entities, primary_ips_from_t
 from .lags import _lag_entities
 from .physical_ports import _physical_port_entities
 from .port_constants import PORT_ENTITY_TABLE_KEYS
-from .port_join import _capabilities_by_port, _group_by_interface_id, _native_port_name_tables
+from .port_join import JoinedPortTables, _native_port_name_tables
 
 if TYPE_CHECKING:
     from netboxlabs.diode.sdk.ingester import Entity
@@ -63,39 +63,17 @@ def ports_to_entities(
         function=function,
         product_type=product_type,
     )
-    configs = _group_by_interface_id(tables.get("port_configs") or [])
-    states = _group_by_interface_id(tables.get("port_states") or [])
-    vlan_rows = tables.get("vlan_properties") or []
-    vlans = _group_by_interface_id(vlan_rows)
-    capabilities = _capabilities_by_port(tables.get("port_capabilities") or [])
-    poe_states = _group_by_interface_id(tables.get("poe_states") or [])
-    poe_configs = _group_by_interface_id(tables.get("poe_configs") or [])
-    interface_ips = _group_by_interface_id(tables.get("interface_ips") or [])
-    lag_configs = tables.get("lag_configs") or []
-    lag_states = tables.get("lag_states") or []
+    joined = JoinedPortTables.from_tables(tables)
 
     lag_entities, lag_names, lag_interface_ids, membership, emitted_keys = _lag_entities(
         device=device_ref,
-        lag_configs=lag_configs,
-        lag_states=lag_states,
-        vlans=vlans,
-        poe_states=poe_states,
-        poe_configs=poe_configs,
-        interface_ips=interface_ips,
-        port_configs=configs,
-        port_states=states,
+        tables=joined,
     )
     entities = list(lag_entities)
 
     port_entities, port_keys = _physical_port_entities(
         device=device_ref,
-        configs=configs,
-        states=states,
-        vlans=vlans,
-        capabilities=capabilities,
-        poe_states=poe_states,
-        poe_configs=poe_configs,
-        interface_ips=interface_ips,
+        tables=joined,
         lag_names=lag_names,
         lag_interface_ids=lag_interface_ids,
         membership=membership,
@@ -106,7 +84,7 @@ def ports_to_entities(
     entities.extend(
         _orphan_ip_entities(
             device=device_ref,
-            interface_ips=interface_ips,
+            interface_ips=joined.interface_ips,
             emitted_keys=emitted_keys,
             interface_names=_interface_names_by_id(tables),
         ),

@@ -3,10 +3,46 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from dataclasses import dataclass
 
 from orb_extreme_platformone.identity import native_port_name
 
 from .common import logger
+
+
+@dataclass(frozen=True, slots=True)
+class JoinedPortTables:
+    """One switch's ConfigState port tables, grouped ready for joining.
+
+    Bundled because the physical-port and LAG builders need the same seven
+    groupings; passing them individually made two signatures of 11 and 9
+    parameters that had to stay in sync by hand.
+    """
+
+    configs: dict[str, list[dict]]
+    states: dict[str, list[dict]]
+    vlans: dict[str, list[dict]]
+    poe_states: dict[str, list[dict]]
+    poe_configs: dict[str, list[dict]]
+    interface_ips: dict[str, list[dict]]
+    capabilities: dict[tuple[str, str], dict]
+    lag_configs: list[dict]
+    lag_states: list[dict]
+
+    @classmethod
+    def from_tables(cls, tables: dict[str, list[dict]]) -> JoinedPortTables:
+        """Group a device's raw ConfigState rows by their join keys."""
+        return cls(
+            configs=_group_by_interface_id(tables.get("port_configs") or []),
+            states=_group_by_interface_id(tables.get("port_states") or []),
+            vlans=_group_by_interface_id(tables.get("vlan_properties") or []),
+            poe_states=_group_by_interface_id(tables.get("poe_states") or []),
+            poe_configs=_group_by_interface_id(tables.get("poe_configs") or []),
+            interface_ips=_group_by_interface_id(tables.get("interface_ips") or []),
+            capabilities=_capabilities_by_port(tables.get("port_capabilities") or []),
+            lag_configs=tables.get("lag_configs") or [],
+            lag_states=tables.get("lag_states") or [],
+        )
 
 
 def _interface_id_of(record: dict) -> str:

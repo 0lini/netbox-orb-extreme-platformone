@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
+from orb_extreme_platformone.catalog import CLUSTER_MEMBER_FILTERS
 from orb_extreme_platformone.client import PlatformOneApiError, PlatformOneClient
 from orb_extreme_platformone.logging_context import get_logger
 
 from .retrieve import retrieve_parallel
-from .tables import CLUSTER_MEMBER_FILTERS
 
 logger = get_logger(__name__)
 

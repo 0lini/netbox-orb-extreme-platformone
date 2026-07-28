@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from orb_extreme_platformone import transform
-from orb_extreme_platformone.backend import WIRELESS_TABLES
+from orb_extreme_platformone.catalog import WIRELESS_TABLES
 from tests.conftest import cf
 from tests.transform_helpers import _wireless_tables
 

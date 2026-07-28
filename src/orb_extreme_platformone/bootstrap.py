@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import requests
 
-from .http import truncate_error_body
+from .http import ApiError, raise_for_response
 from .schema import (
     CF_CLUSTER_ID,
     CF_DEVICE_ID,
@@ -35,126 +35,111 @@ from .urls import require_https_url
 # UUID stays an internal join key (re-correlated by serial every tick) and is
 # not stored on Device.
 
+
+def _custom_field(
+    name: str,
+    label: str,
+    object_type: str,
+    description: str,
+    *,
+    unique: bool,
+) -> dict:
+    """One NetBox custom-field definition; every field this worker needs is text."""
+    return {
+        "name": name,
+        "label": label,
+        "type": "text",
+        "object_types": [object_type],
+        "description": description,
+        "filter_logic": "exact",
+        "unique": unique,
+    }
+
+
 CUSTOM_FIELDS = [
-    {
-        "name": CF_DEVICE_ID,
-        "label": "Platform ONE Device ID",
-        "type": "text",
-        "object_types": ["dcim.device"],
-        "description": (
-            "Immutable Extreme Platform ONE device id (Assets API device_id); "
-            "stable correlation key even if the device is renamed."
-        ),
-        "filter_logic": "exact",
-        "unique": True,
-    },
-    {
-        "name": CF_INTERFACE_ID,
-        "label": "Platform ONE Interface ID",
-        "type": "text",
-        "object_types": ["dcim.interface"],
-        "description": (
-            "Immutable Extreme Platform ONE interface UUID "
-            "(ConfigState asset_interface_id); stable correlation key even if "
-            "the port is renamed."
-        ),
-        "filter_logic": "exact",
-        "unique": True,
-    },
-    {
-        "name": CF_CLUSTER_ID,
-        "label": "Platform ONE Cluster ID",
-        "type": "text",
-        "object_types": ["dcim.virtualchassis"],
-        "description": (
-            "Immutable Extreme Platform ONE InferredCluster UUID "
-            "(ConfigState retrieve-inferred-cluster id); stable correlation "
-            "key even if peer names change."
-        ),
-        "filter_logic": "exact",
-        "unique": True,
-    },
-    {
-        "name": CF_ISIS_AREA,
-        "label": "Platform ONE ISIS Area",
-        "type": "text",
-        "object_types": ["dcim.device"],
-        "description": (
-            "ISIS area address from ConfigState "
-            "(manual_area_address, else area_name, else learned/default area)."
-        ),
-        "filter_logic": "exact",
-        "unique": False,
-    },
-    {
-        "name": CF_ISIS_SYSTEM_ID,
-        "label": "Platform ONE ISIS System ID",
-        "type": "text",
-        "object_types": ["dcim.device"],
-        "description": ("ISIS system id (sys_id) from ConfigState retrieve-asset-isis-global-config."),
-        "filter_logic": "exact",
-        "unique": False,
-    },
-    {
-        "name": CF_SPBM_NICKNAME,
-        "label": "Platform ONE SPBM Nickname",
-        "type": "text",
-        "object_types": ["dcim.device"],
-        "description": (
-            "SPBM node nickname from ConfigState retrieve-asset-spbm-instance "
-            "(node_nick_name), falling back to ISIS area_vnode_nickname."
-        ),
-        "filter_logic": "exact",
-        "unique": False,
-    },
+    _custom_field(
+        CF_DEVICE_ID,
+        "Platform ONE Device ID",
+        "dcim.device",
+        "Immutable Extreme Platform ONE device id (Assets API device_id); "
+        "stable correlation key even if the device is renamed.",
+        unique=True,
+    ),
+    _custom_field(
+        CF_INTERFACE_ID,
+        "Platform ONE Interface ID",
+        "dcim.interface",
+        "Immutable Extreme Platform ONE interface UUID (ConfigState "
+        "asset_interface_id); stable correlation key even if the port is renamed.",
+        unique=True,
+    ),
+    _custom_field(
+        CF_CLUSTER_ID,
+        "Platform ONE Cluster ID",
+        "dcim.virtualchassis",
+        "Immutable Extreme Platform ONE InferredCluster UUID (ConfigState "
+        "retrieve-inferred-cluster id); stable correlation key even if peer "
+        "names change.",
+        unique=True,
+    ),
+    _custom_field(
+        CF_ISIS_AREA,
+        "Platform ONE ISIS Area",
+        "dcim.device",
+        "ISIS area address from ConfigState "
+        "(manual_area_address, else area_name, else learned/default area).",
+        unique=False,
+    ),
+    _custom_field(
+        CF_ISIS_SYSTEM_ID,
+        "Platform ONE ISIS System ID",
+        "dcim.device",
+        "ISIS system id (sys_id) from ConfigState retrieve-asset-isis-global-config.",
+        unique=False,
+    ),
+    _custom_field(
+        CF_SPBM_NICKNAME,
+        "Platform ONE SPBM Nickname",
+        "dcim.device",
+        "SPBM node nickname from ConfigState retrieve-asset-spbm-instance "
+        "(node_nick_name), falling back to ISIS area_vnode_nickname.",
+        unique=False,
+    ),
 ]
+
+# Extreme Networks brand primary purple; `discovered` is neutral grey because
+# it marks provenance rather than a vendor.
+_EXTREME_PURPLE = "440099"
 
 TAGS = [
     {
         "name": TAG_NAMES[0],
         "slug": TAG_NAMES[0],
-        # Extreme Networks brand primary purple (#440099).
-        "color": "440099",
+        "color": _EXTREME_PURPLE,
         "description": "Objects synced from Extreme Networks via netbox-orb-extreme-platformone.",
     },
     {
         "name": TAG_NAMES[1],
         "slug": TAG_NAMES[1],
-        # Same Extreme brand purple as extreme-networks (#440099).
-        "color": "440099",
+        "color": _EXTREME_PURPLE,
         "description": "Objects synced from Extreme Platform ONE via netbox-orb-extreme-platformone.",
     },
     {
         "name": TAG_NAMES[2],
         "slug": TAG_NAMES[2],
-        # Neutral gray — provenance marker, not brand-colored.
         "color": "9e9e9e",
         "description": "Objects created by automated discovery rather than manually.",
     },
 ]
 
 
-_HTTP_REDIRECT_MIN = 300
-_HTTP_CLIENT_ERROR_MIN = 400
 _REQUEST_TIMEOUT_SECONDS = 30
-_AUTH_FAILURE_STATUSES = (401, 403)
 
 
-class NetBoxApiError(RuntimeError):
-    """Raised on a failed NetBox REST call during schema bootstrap.
+class NetBoxApiError(ApiError):
+    """Raised on a failed NetBox REST call during schema bootstrap."""
 
-    Mirrors ``PlatformOneApiError`` so callers handle one error shape across
-    both upstreams. ``status_code`` is ``None`` for transport failures.
-    """
-
-    def __init__(self, message: str, *, status_code: int | None = None) -> None:
-        super().__init__(message)
-        self.status_code = status_code
-
-    @property
-    def is_auth_failure(self) -> bool:
-        """NetBox token is wrong or lacks permission — retrying will not help."""
-        return self.status_code in _AUTH_FAILURE_STATUSES
+    upstream = "NetBox"
 
 
 def _headers(token: str) -> dict:
@@ -169,14 +154,8 @@ def _request(method: str, url: str, token: str, **kwargs) -> requests.Response:
         resp = requests.request(method, url, headers=_headers(token), **kwargs)
     except requests.RequestException as exc:
         msg = f"NetBox request failed for {url}: {exc}"
-        raise NetBoxApiError(msg) from exc
-    if _HTTP_REDIRECT_MIN <= resp.status_code < _HTTP_CLIENT_ERROR_MIN:
-        msg = f"NetBox unexpected redirect {resp.status_code} for {url}"
-        raise NetBoxApiError(msg, status_code=resp.status_code)
-    if resp.status_code >= _HTTP_CLIENT_ERROR_MIN:
-        detail = truncate_error_body(resp.text)
-        msg = f"NetBox API error {resp.status_code} for {url}: {detail}"
-        raise NetBoxApiError(msg, status_code=resp.status_code)
+        raise NetBoxApiError(msg, path=url) from exc
+    raise_for_response(resp, path=url, error=NetBoxApiError)
     return resp
 
 

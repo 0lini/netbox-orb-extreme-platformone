@@ -15,7 +15,7 @@ from .port_constants import (
     VERIFIED_OPER_SPEED_KBPS,
     VERIFIED_POE_CLASSIFICATION,
 )
-from .port_join import _first_row, _optional_first_row
+from .port_join import JoinedPortTables, _first_row, _optional_first_row
 from .vlans import _vlan_fields, _vlan_records_for
 
 
@@ -138,13 +138,7 @@ def _port_kwargs(
 def _physical_port_entities(
     *,
     device: Device,
-    configs: dict[str, list[dict]],
-    states: dict[str, list[dict]],
-    vlans: dict[str, list[dict]],
-    capabilities: dict[tuple[str, str], dict],
-    poe_states: dict[str, list[dict]],
-    poe_configs: dict[str, list[dict]],
-    interface_ips: dict[str, list[dict]],
+    tables: JoinedPortTables,
     lag_names: set[str],
     lag_interface_ids: set[str],
     membership: dict[str, str],
@@ -153,9 +147,9 @@ def _physical_port_entities(
     entities: list[Entity] = []
     emitted_keys: dict[str, str] = {}
 
-    for interface_id in sorted(set(configs) | set(states)):
-        config = _first_row(configs, interface_id, table="port_configs")
-        state = _first_row(states, interface_id, table="port_states")
+    for interface_id in sorted(set(tables.configs) | set(tables.states)):
+        config = _first_row(tables.configs, interface_id, table="port_configs")
+        state = _first_row(tables.states, interface_id, table="port_states")
         name = str(config.get("name") or state.get("name") or "")
         if not name:
             continue
@@ -170,10 +164,10 @@ def _physical_port_entities(
             interface_id=interface_id,
             config=config,
             state=state,
-            vlan_records=_vlan_records_for(vlans, interface_id=interface_id),
-            capability=capabilities.get((port_device_id, name)),
-            poe_state=_optional_first_row(poe_states, interface_id, table="poe_states"),
-            poe_config=_optional_first_row(poe_configs, interface_id, table="poe_configs"),
+            vlan_records=_vlan_records_for(tables.vlans, interface_id=interface_id),
+            capability=tables.capabilities.get((port_device_id, name)),
+            poe_state=_optional_first_row(tables.poe_states, interface_id, table="poe_states"),
+            poe_config=_optional_first_row(tables.poe_configs, interface_id, table="poe_configs"),
         )
         lag_parent = membership.get(name)
         if lag_parent:
@@ -184,7 +178,7 @@ def _physical_port_entities(
             _ip_entities_for_interface(
                 device=device,
                 interface_name=name,
-                rows=interface_ips.get(interface_id, []),
+                rows=tables.interface_ips.get(interface_id, []),
                 interface_type=kwargs.get("type"),
             ),
         )

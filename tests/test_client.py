@@ -313,9 +313,11 @@ def test_login_failure_raises_platform_one_api_error() -> None:
     responses.add(responses.POST, LOGIN_URL, json={"error": "bad creds"}, status=401)
 
     client = PlatformOneClient(username="user", password="pass")
-    with pytest.raises(PlatformOneApiError, match="login failed") as excinfo:
+    # One message shape for every failed call: "<upstream> API error <code> for <path>".
+    with pytest.raises(PlatformOneApiError, match=r"API error 401 for /login") as excinfo:
         list(client.get_devices())
     assert "bad creds" in str(excinfo.value)
+    assert excinfo.value.is_auth_failure
 
 
 @responses.activate

@@ -55,28 +55,23 @@ RETRY_STATUSES = (429, 500, 502, 503, 504)
 
 _HTTP_REDIRECT_MIN = 300
 _HTTP_CLIENT_ERROR_MIN = 400
-_HTTP_OK = 200
 _AUTH_FAILURE_STATUSES = (401, 403)
 _UNAUTHORIZED = 401
 
 logger = get_logger(__name__)
 
 
-class PlatformOneApiError(RuntimeError):
-    """Raised on a failed Platform ONE API call.
+class ApiError(RuntimeError):
+    """Base for upstream API failures, with the status code kept structured.
 
-    ``status_code`` is the HTTP status when the failure came from a response,
-    or ``None`` for transport failures and malformed bodies. Callers branch on
-    the ``is_*`` properties rather than parsing the message text.
+    ``status_code`` is the HTTP status when the failure came from a response, or
+    ``None`` for transport failures and malformed bodies. Callers branch on the
+    ``is_*`` properties rather than parsing the message text.
     """
 
-    def __init__(
-        self,
-        message: str,
-        *,
-        status_code: int | None = None,
-        path: str | None = None,
-    ) -> None:
+    upstream = "API"
+
+    def __init__(self, message: str, *, status_code: int | None = None, path: str | None = None) -> None:
         super().__init__(message)
         self.status_code = status_code
         self.path = path
@@ -88,13 +83,34 @@ class PlatformOneApiError(RuntimeError):
 
     @property
     def is_not_found(self) -> bool:
-        """Endpoint or table absent for this tenant — permanent for the tick."""
+        """Endpoint or resource absent — permanent for the tick."""
         return self.status_code == requests.codes.not_found
 
     @property
     def is_transient(self) -> bool:
         """Worth retrying: rate limit, gateway error, or a transport failure."""
         return self.status_code is None or self.status_code in RETRY_STATUSES
+
+
+class PlatformOneApiError(ApiError):
+    """Raised on a failed Platform ONE API call."""
+
+    upstream = "Platform ONE"
+
+
+def raise_for_response(resp: requests.Response, *, path: str, error: type[ApiError]) -> None:
+    """Raise ``error`` for a redirect or >=400 response; return otherwise.
+
+    Redirects fail closed rather than being followed: neither upstream should
+    ever move our bearer token or API token to another origin.
+    """
+    if _HTTP_REDIRECT_MIN <= resp.status_code < _HTTP_CLIENT_ERROR_MIN:
+        msg = f"{error.upstream} unexpected redirect {resp.status_code} for {path}"
+        raise error(msg, status_code=resp.status_code, path=path)
+    if resp.status_code >= _HTTP_CLIENT_ERROR_MIN:
+        detail = truncate_error_body(resp.text)
+        msg = f"{error.upstream} API error {resp.status_code} for {path}: {detail}"
+        raise error(msg, status_code=resp.status_code, path=path)
 
 
 def truncate_error_body(text: str, *, limit: int = _ERROR_BODY_LIMIT) -> str:
@@ -212,13 +228,7 @@ class PlatformOneTransport:
             timeout=self._timeout,
             allow_redirects=False,
         )
-        if _HTTP_REDIRECT_MIN <= resp.status_code < _HTTP_CLIENT_ERROR_MIN:
-            msg = f"Platform ONE login unexpected redirect ({resp.status_code})"
-            raise PlatformOneApiError(msg, status_code=resp.status_code, path="/login")
-        if resp.status_code != _HTTP_OK:
-            detail = truncate_error_body(resp.text)
-            msg = f"Platform ONE login failed ({resp.status_code}): {detail}"
-            raise PlatformOneApiError(msg, status_code=resp.status_code, path="/login")
+        raise_for_response(resp, path="/login", error=PlatformOneApiError)
         data = resp.json()
         access_token = data.get("access_token")
         if not access_token:
@@ -258,18 +268,12 @@ class PlatformOneTransport:
             except requests.RequestException as exc:
                 msg = f"Platform ONE API request failed for {path}: {exc}"
                 raise PlatformOneApiError(msg, path=path) from exc
-            if _HTTP_REDIRECT_MIN <= resp.status_code < _HTTP_CLIENT_ERROR_MIN:
-                msg = f"Platform ONE API unexpected redirect {resp.status_code} for {path}"
-                raise PlatformOneApiError(msg, status_code=resp.status_code, path=path)
             if resp.status_code == _UNAUTHORIZED and attempt == 1 and self._username and self._password:
                 with self._lock:
                     self._token_expiry = 0.0
                     self._login_locked()
                 continue
-            if resp.status_code >= _HTTP_CLIENT_ERROR_MIN:
-                detail = truncate_error_body(resp.text)
-                msg = f"Platform ONE API error {resp.status_code} for {path}: {detail}"
-                raise PlatformOneApiError(msg, status_code=resp.status_code, path=path)
+            raise_for_response(resp, path=path, error=PlatformOneApiError)
             try:
                 payload = resp.json()
             except ValueError as exc:

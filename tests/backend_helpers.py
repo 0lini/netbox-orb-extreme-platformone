@@ -5,7 +5,7 @@ from __future__ import annotations
 import responses
 from worker.models import Config, Policy
 
-from orb_extreme_platformone.backend import FABRIC_DEVICE_TABLES, INTERFACE_ID_TABLES, PORT_TABLES
+from orb_extreme_platformone.catalog import FABRIC_DEVICE_TABLES, INTERFACE_ID_TABLES, PORT_TABLES
 from orb_extreme_platformone.client import DEFAULT_BASE_URL, configstate_response_key
 
 ASSETS_URL = f"{DEFAULT_BASE_URL}/assets/v1/devices"

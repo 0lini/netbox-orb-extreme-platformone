@@ -119,9 +119,6 @@ class PlatformOneClient:
         """Release this thread's HTTP session at the end of a tick."""
         self._transport.close()
 
-    def _post(self, path: str, params: dict, body: dict) -> dict:
-        return self._transport.post(path, params, body)
-
     def _paginate(
         self,
         path: str,
@@ -135,7 +132,7 @@ class PlatformOneClient:
     ) -> Iterator[dict]:
         page = 1
         while True:
-            payload = self._post(path, {page_param: page, size_param: size}, body)
+            payload = self._transport.post(path, {page_param: page, size_param: size}, body)
             records = payload.get(response_key) or []
             if not isinstance(records, list):
                 msg = (

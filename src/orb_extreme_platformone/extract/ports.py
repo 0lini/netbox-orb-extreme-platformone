@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from orb_extreme_platformone.catalog import INTERFACE_ID_TABLES, PORT_TABLES
 from orb_extreme_platformone.client import CONFIGSTATE_FILTER_CHUNK_SIZE
 
 from .retrieve import extract_device_table_buckets, retrieve_ok
-from .tables import INTERFACE_ID_TABLES, PORT_TABLES
 
 if TYPE_CHECKING:
     from orb_extreme_platformone.client import PlatformOneClient

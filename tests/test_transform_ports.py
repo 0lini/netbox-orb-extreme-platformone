@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from orb_extreme_platformone import transform
-from orb_extreme_platformone.backend import INTERFACE_ID_TABLES, PORT_TABLES
+from orb_extreme_platformone.catalog import INTERFACE_ID_TABLES, PORT_TABLES
 from tests.conftest import PORT_CONFIG, PORT_STATE, VLAN_PROPERTIES, cf
 from tests.transform_helpers import _tables
 

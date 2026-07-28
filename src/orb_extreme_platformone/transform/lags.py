@@ -10,7 +10,7 @@ from .common import _coerce_bool, _normalized_mac, logger
 from .ips import _ip_entities_for_interface
 from .physical_ports import _iface_base_kwargs
 from .port_constants import LAG_INTERFACE_TYPE
-from .port_join import _first_row, _group_by_interface_id, _optional_first_row
+from .port_join import JoinedPortTables, _first_row, _group_by_interface_id, _optional_first_row
 from .vlans import _vlan_fields, _vlan_records_for
 
 
@@ -175,22 +175,9 @@ def _lag_kwargs(
     return kwargs
 
 
-def _lag_entities(
-    *,
-    device: Device,
-    lag_configs: list[dict],
-    lag_states: list[dict],
-    vlans: dict[str, list[dict]],
-    poe_states: dict[str, list[dict]],
-    poe_configs: dict[str, list[dict]],
-    interface_ips: dict[str, list[dict]],
-    port_configs: dict[str, list[dict]] | None = None,
-    port_states: dict[str, list[dict]] | None = None,
-) -> LagResult:
+def _lag_entities(*, device: Device, tables: JoinedPortTables) -> LagResult:
     """Emit LAG parent interfaces. Returns entities plus join bookkeeping."""
-    joined_rows = _joined_lag_rows(lag_configs, lag_states)
-    port_configs = port_configs or {}
-    port_states = port_states or {}
+    joined_rows = _joined_lag_rows(tables.lag_configs, tables.lag_states)
 
     # Only suppress duplicate physical-port rows for LAGs we actually emit.
     # Unnamed LAG rows are skipped below; their interface ids must still be
@@ -211,11 +198,11 @@ def _lag_entities(
             name=name,
             interface_id=interface_id,
             config=config,
-            vlan_records=_vlan_records_for(vlans, interface_id=interface_id),
-            poe_state=_optional_first_row(poe_states, interface_id, table="poe_states"),
-            poe_config=_optional_first_row(poe_configs, interface_id, table="poe_configs"),
-            port_config=_optional_first_row(port_configs, interface_id, table="port_configs"),
-            port_state=_optional_first_row(port_states, interface_id, table="port_states"),
+            vlan_records=_vlan_records_for(tables.vlans, interface_id=interface_id),
+            poe_state=_optional_first_row(tables.poe_states, interface_id, table="poe_states"),
+            poe_config=_optional_first_row(tables.poe_configs, interface_id, table="poe_configs"),
+            port_config=_optional_first_row(tables.configs, interface_id, table="port_configs"),
+            port_state=_optional_first_row(tables.states, interface_id, table="port_states"),
         )
         entities.append(Entity(interface=Interface(**kwargs)))
         emitted_keys[interface_id] = name
@@ -224,7 +211,7 @@ def _lag_entities(
             _ip_entities_for_interface(
                 device=device,
                 interface_name=name,
-                rows=interface_ips.get(interface_id, []),
+                rows=tables.interface_ips.get(interface_id, []),
                 interface_type=LAG_INTERFACE_TYPE,
             ),
         )

@@ -4,30 +4,15 @@ from __future__ import annotations
 
 from .common import _coerce_int, _compact_token
 
+# Only modes the substring fallback in `_radio_type` gets wrong need a table
+# entry: "11bg" and "11an" contain "11b"/"11a" but mean 11g/11n, so a plain
+# substring scan would pick the wrong standard. Everything else — "_11ax_5g",
+# "ieee802.11ac", "11ac" — the fallback already resolves correctly.
 _RADIO_TYPE_BY_MODE = {
-    "_11a": "ieee802.11a",
     "_11bg": "ieee802.11g",
     "_11an": "ieee802.11n",
-    "_11ng": "ieee802.11n",
-    "_11ac": "ieee802.11ac",
-    "_11ax_2g": "ieee802.11ax",
-    "_11ax_5g": "ieee802.11ax",
-    "_11ax_6g": "ieee802.11ax",
-    "11a": "ieee802.11a",
     "11bg": "ieee802.11g",
     "11an": "ieee802.11n",
-    "11ng": "ieee802.11n",
-    "11ac": "ieee802.11ac",
-    "11ax": "ieee802.11ax",
-    "11ax_2g": "ieee802.11ax",
-    "11ax_5g": "ieee802.11ax",
-    "11ax_6g": "ieee802.11ax",
-    "ieee802.11a": "ieee802.11a",
-    "ieee802.11b": "ieee802.11b",
-    "ieee802.11g": "ieee802.11g",
-    "ieee802.11n": "ieee802.11n",
-    "ieee802.11ac": "ieee802.11ac",
-    "ieee802.11ax": "ieee802.11ax",
 }
 
 # channel_width is an integer in ConfigState; only values that are already

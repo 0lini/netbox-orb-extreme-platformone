@@ -24,7 +24,7 @@ from pathlib import Path
 
 import pytest
 
-from orb_extreme_platformone.backend import (
+from orb_extreme_platformone.catalog import (
     CLUSTER_MEMBER_FILTERS,
     INTERFACE_ID_TABLES,
     PORT_TABLES,

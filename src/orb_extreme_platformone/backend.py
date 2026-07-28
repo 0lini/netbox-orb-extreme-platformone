@@ -14,7 +14,7 @@ from __future__ import annotations
 import os
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as pkg_version
-from typing import TYPE_CHECKING, NamedTuple, overload
+from typing import TYPE_CHECKING, NamedTuple
 
 from worker.backend import Backend as WorkerBackend
 from worker.models import Metadata, Policy
@@ -26,14 +26,7 @@ from .client import (
     PlatformOneApiError,
     PlatformOneClient,
 )
-from .extract import (
-    CLUSTER_MEMBER_FILTERS,
-    FABRIC_DEVICE_TABLES,
-    INTERFACE_ID_TABLES,
-    PORT_TABLES,
-    WIRELESS_TABLES,
-    correlated_records,
-)
+from .extract import correlated_records
 from .extract.clusters import extract_inferred_clusters
 from .extract.fabric import extract_fabric_tables
 from .extract.ports import extract_port_tables
@@ -62,19 +55,7 @@ DEFAULT_CLASSIFICATION = "ALL"
 # when one starts misbehaving, without editing code and redeploying.
 DISCOVERY_DOMAINS = ("virtual_chassis", "ports", "wireless")
 
-# Re-exported for tests / contract checks that historically imported catalogs
-# from this module.
-__all__ = [
-    "APP_NAME",
-    "APP_VERSION",
-    "CLUSTER_MEMBER_FILTERS",
-    "DEFAULT_CLASSIFICATION",
-    "FABRIC_DEVICE_TABLES",
-    "INTERFACE_ID_TABLES",
-    "PORT_TABLES",
-    "WIRELESS_TABLES",
-    "Backend",
-]
+__all__ = ["APP_NAME", "APP_VERSION", "DEFAULT_CLASSIFICATION", "Backend"]
 
 
 def _log_failed_tables(policy_name: str, failed_tables: list[str], *, domain: str = "") -> None:
@@ -94,26 +75,11 @@ def _policy_value(config: object, key: str, default: object = None) -> object:
     return getattr(config, key, default) if config is not None else default
 
 
-@overload
-def _policy_or_env(config: object, key: str, *, env_key: str | None = ..., default: str) -> str: ...
-
-
-@overload
-def _policy_or_env(
-    config: object,
-    key: str,
-    *,
-    env_key: str | None = ...,
-    default: None = ...,
-) -> str | None: ...
-
-
 def _policy_or_env(
     config: object,
     key: str,
     *,
     env_key: str | None = None,
-    default: str | None = None,
 ) -> str | None:
     """Policy config wins when set (including empty string); else environment.
 
@@ -124,7 +90,7 @@ def _policy_or_env(
     value = _policy_value(config, key, None)
     if value is not None:
         return str(value)
-    return os.environ.get(env_key or key, default)
+    return os.environ.get(env_key or key)
 
 
 def _policy_bool(config: object, key: str, *, default: bool = False) -> bool:
@@ -142,21 +108,33 @@ def _policy_bool(config: object, key: str, *, default: bool = False) -> bool:
     return raw.strip().casefold() in {"1", "true", "yes", "on"}
 
 
+def _string_set(raw: object, *, what: str) -> set[str] | None:
+    """Coerce a policy value to a set of non-empty strings, or None if unusable.
+
+    Shared by ``scope.sites`` and ``disable_domains``: both accept a list and
+    tolerate a bare string, and both must reject one outright rather than let
+    ``list("HQ")`` become ``["H", "Q"]``.
+    """
+    if raw is None:
+        return None
+    if isinstance(raw, str):
+        cleaned = {raw.strip()} if raw.strip() else set()
+    elif isinstance(raw, (list, tuple, set)):
+        cleaned = {str(item).strip() for item in raw if str(item).strip()}
+    else:
+        logger.warning("Ignoring invalid %s %r", what, raw)
+        return None
+    return cleaned or None
+
+
 def _enabled_domains(config: object) -> set[str]:
     """Discovery domains to run this tick; `disable_domains` opts phases out.
 
     Note the coupling: disabling ``ports`` also drops Device primary IPs and
     the ISIS/SPBM custom fields, because the port fan-out is what supplies them.
     """
-    raw = _policy_value(config, "disable_domains", None)
-    if raw is None:
-        return set(DISCOVERY_DOMAINS)
-    if isinstance(raw, str):
-        disabled = {raw.strip()}
-    elif isinstance(raw, (list, tuple, set)):
-        disabled = {str(item).strip() for item in raw if str(item).strip()}
-    else:
-        logger.warning("Ignoring invalid disable_domains %r; running every domain", raw)
+    disabled = _string_set(_policy_value(config, "disable_domains", None), what="disable_domains")
+    if not disabled:
         return set(DISCOVERY_DOMAINS)
     unknown = sorted(disabled - set(DISCOVERY_DOMAINS))
     if unknown:
@@ -168,26 +146,18 @@ def _enabled_domains(config: object) -> set[str]:
     return set(DISCOVERY_DOMAINS) - disabled
 
 
-def _scope_sites(scope: object) -> list[str] | None:
+def _scope_sites(scope: object) -> set[str] | None:
     """Return an explicit site allow-list, or None for all sites.
 
-    Accepts ``sites: ["*"]``, missing/empty ``sites``, or a non-dict scope as
-    "no filter". A bare string is rejected (``list("HQ")`` would otherwise
-    become ``["H", "Q"]``).
+    ``sites: ["*"]``, missing/empty ``sites``, and a non-dict scope all mean
+    "no filter".
     """
     if not isinstance(scope, dict):
         return None
     sites = scope.get("sites")
     if sites in (None, [], ["*"], "*"):
         return None
-    if isinstance(sites, str):
-        logger.warning("Ignoring invalid policy scope.sites string %r; syncing all sites", sites)
-        return None
-    if not isinstance(sites, (list, tuple, set)):
-        logger.warning("Ignoring invalid policy scope.sites %r; syncing all sites", sites)
-        return None
-    cleaned = [str(site).strip() for site in sites if str(site).strip()]
-    return cleaned or None
+    return _string_set(sites, what="policy scope.sites")
 
 
 def _records_by_cs_id(records: list[dict], *, predicate: Callable[[dict], bool]) -> dict[str, dict]:
@@ -274,20 +244,13 @@ def _fanout_context(
 def _policy_timeout(config: object) -> float:
     """Per-request timeout in seconds; falls back to the transport default."""
     raw = _policy_or_env(config, "PLATFORMONE_TIMEOUT")
-    if raw is None:
-        return DEFAULT_TIMEOUT_SECONDS
     try:
-        timeout = float(raw)
+        timeout = float(raw) if raw is not None else DEFAULT_TIMEOUT_SECONDS
     except (TypeError, ValueError):
-        logger.warning(
-            "Ignoring invalid PLATFORMONE_TIMEOUT %r; using %ss",
-            raw,
-            DEFAULT_TIMEOUT_SECONDS,
-        )
-        return DEFAULT_TIMEOUT_SECONDS
+        timeout = 0.0
     if timeout <= 0:
         logger.warning(
-            "Ignoring non-positive PLATFORMONE_TIMEOUT %r; using %ss",
+            "Ignoring unusable PLATFORMONE_TIMEOUT %r; using %ss",
             raw,
             DEFAULT_TIMEOUT_SECONDS,
         )
@@ -297,7 +260,7 @@ def _policy_timeout(config: object) -> float:
 
 def _build_client(config: object) -> PlatformOneClient:
     return PlatformOneClient(
-        base_url=_policy_or_env(config, "PLATFORMONE_API_URL", default=DEFAULT_BASE_URL),
+        base_url=_policy_or_env(config, "PLATFORMONE_API_URL") or DEFAULT_BASE_URL,
         api_token=_policy_or_env(config, "PLATFORMONE_API_TOKEN"),
         username=_policy_or_env(config, "PLATFORMONE_USERNAME"),
         password=_policy_or_env(config, "PLATFORMONE_PASSWORD"),
@@ -342,23 +305,20 @@ class Backend(WorkerBackend):
             self._bootstrap(config, policy_name)
 
         client = _build_client(config)
-        classification = _policy_or_env(
-            config,
-            "classification",
-            env_key="PLATFORMONE_CLASSIFICATION",
-            default=DEFAULT_CLASSIFICATION,
+        classification = (
+            _policy_or_env(config, "classification", env_key="PLATFORMONE_CLASSIFICATION")
+            or DEFAULT_CLASSIFICATION
         )
         assets = list(client.get_devices(classification=classification))
 
         records = correlated_records(client, assets, policy_name)
 
-        scope_sites = _scope_sites(getattr(policy, "scope", None))
         # Backend owns scoping: port fan-out and devices_to_entities must see
         # the same filtered list. Pass site_scope=None into transform so it
         # does not re-filter (see transform.scope_devices / devices_to_entities).
         scoped = transform.scope_devices(
             records,
-            site_scope=set(scope_sites) if scope_sites else None,
+            site_scope=_scope_sites(getattr(policy, "scope", None)),
         )
         logger.info(
             "Policy %s: fetched %d devices from Platform ONE (%d in scope)",

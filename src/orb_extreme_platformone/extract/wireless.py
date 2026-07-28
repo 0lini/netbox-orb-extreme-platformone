@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from orb_extreme_platformone.catalog import WIRELESS_TABLES
+
 from .retrieve import extract_device_table_buckets
-from .tables import WIRELESS_TABLES
 
 if TYPE_CHECKING:
     from orb_extreme_platformone.client import PlatformOneClient
