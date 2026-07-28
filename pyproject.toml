@@ -96,7 +96,7 @@ omit = ["*/orb_extreme_platformone/__main__.py"]
 [tool.coverage.report]
 show_missing = true
 skip_covered = true
-fail_under = 90
+fail_under = 100
 exclude_also = ["if TYPE_CHECKING:", "raise AttributeError"]
 
 [tool.ruff]

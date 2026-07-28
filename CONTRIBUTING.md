@@ -19,7 +19,7 @@ Optional: `pre-commit install` to run Ruff + ty on commit (see `.pre-commit-conf
   (`.`) or a **pinned** published package for production.
 - Prefer small, domain-focused modules under `src/orb_extreme_platformone/`.
 - Add or update offline pytest coverage for behavior changes (CI enforces
-  `--cov-fail-under=90`).
+  `--cov-fail-under=100`).
 - Do not commit `.env`, dry-run inventory JSON, or live credentials.
 - Security posture and residual risks: see [`SECURITY.md`](SECURITY.md).
 
@@ -27,5 +27,5 @@ Optional: `pre-commit install` to run Ruff + ty on commit (see `.pre-commit-conf
 
 - Target `main`.
 - Keep CI green (lint + ty with warnings-as-errors, Python 3.10–3.14 tests with
-  coverage ≥90%, package smoke after lint/tests).
+  coverage 100%, package smoke after lint/tests).
 - Update [`CHANGELOG.md`](CHANGELOG.md) under `[Unreleased]` for user-visible changes.
