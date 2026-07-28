@@ -8,7 +8,8 @@ from netboxlabs.diode.sdk.ingester import Entity, Interface, WirelessLAN
 
 from orb_extreme_platformone.extract.tables import WIRELESS_TABLES
 
-from .common import _device_ref, _interface_identity_kwargs, _normalized_mac
+from .common import _coerce_int, _device_ref, _interface_identity_kwargs, _normalized_mac
+from .port_join import _by_key, _first_row
 from .wireless_auth import _ensure_wlan, _wlan_kwargs
 from .wireless_rf import (
     DEFAULT_RADIO_TYPE,
@@ -16,7 +17,6 @@ from .wireless_rf import (
     _channel_width_mhz,
     _is_wireless_interface_type,
     _radio_type,
-    _tx_power,
 )
 
 # Keys `radios_to_entities` reads — derived from the extract catalog.
@@ -51,6 +51,15 @@ def _ssid_name(row: dict) -> str:
     return str(row.get("name") or "").strip()
 
 
+def _primary_wireless_state(states: list[dict]) -> dict:
+    """First non-empty state row for radio identity / RF fields.
+
+    Multiple state rows per ``asset_interface_id`` are valid (SSID names), but
+    radio_mode / BSSID / power / channel live on a single primary state view.
+    """
+    return next((row for row in states if row), {})
+
+
 def _radio_interface_kwargs(
     *,
     device,
@@ -78,7 +87,7 @@ def _radio_interface_kwargs(
     wireless = _is_wireless_interface_type(kwargs.get("type"))
     if wireless:
         kwargs["rf_role"] = "ap"
-        tx_power = _tx_power(state.get("power"))
+        tx_power = _coerce_int(state.get("power"))
         if tx_power is not None:
             kwargs["tx_power"] = tx_power
         frequency = _channel_frequency_mhz(state.get("band"), state.get("channel"))
@@ -147,11 +156,11 @@ def radios_to_entities(
         ssid_states = tables.get("ssid_states") or []
 
         radios: dict[str, dict] = {}
-        for row in configs:
-            key = _wireless_radio_key(row)
-            if not key:
-                continue
-            radios.setdefault(key, {"config": {}, "states": []})["config"] = row
+        configs_by_key = _by_key(configs)
+        for key in configs_by_key:
+            radios.setdefault(key, {"config": {}, "states": []})["config"] = _first_row(
+                configs_by_key, key, table="wireless_interfaces"
+            )
         for row in states:
             key = _wireless_radio_key(row)
             if not key:
@@ -161,7 +170,7 @@ def radios_to_entities(
         name_to_key: dict[str, str] = {}
         for key, radio in radios.items():
             config = radio["config"]
-            state = (radio["states"] or [{}])[0]
+            state = _primary_wireless_state(radio["states"])
             name = str(config.get("name") or state.get("name") or "").strip()
             if not name:
                 continue
@@ -222,7 +231,7 @@ def radios_to_entities(
     for (device_id, key), radio in sorted(
         radio_rows.items(), key=lambda item: (item[1]["device"], item[1]["name"])
     ):
-        state = next((row for row in radio["states"] if row), {})
+        state = _primary_wireless_state(radio["states"])
         meta = device_meta.get(device_id) or {}
         device_ref = _device_ref(
             name=radio["device"],

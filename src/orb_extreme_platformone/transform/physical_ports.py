@@ -189,7 +189,7 @@ def _physical_port_entities(
                 device=device,
                 interface_name=name,
                 rows=interface_ips.get(key, []),
-                interface_type=str(kwargs.get("type") or DEFAULT_INTERFACE_TYPE),
+                interface_type=kwargs.get("type"),
             )
         )
 

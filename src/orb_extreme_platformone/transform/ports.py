@@ -36,8 +36,9 @@ def ports_to_entities(
     rows. Physical ports are the union of config+state rows joined on
     asset_interface_id. LAG interfaces come from lag
     config/state (type `lag`); member ports get Diode `Interface.lag`
-    pointing at the parent LAG (membership from lag-config only; members
-    without a port row are not stubbed). Interface IP rows become Diode
+    pointing at the parent LAG (membership from lag-config, falling back to
+    lag-state `member_ports` when config omits them; members without a port
+    row are not stubbed). Interface IP rows become Diode
     IPAddress entities assigned to the matching interface. VLAN membership
     refs use `vid` plus `name=str(vid)` (NetBox requires a name;
     switch-local names are not site-scoped). Physical ports without a

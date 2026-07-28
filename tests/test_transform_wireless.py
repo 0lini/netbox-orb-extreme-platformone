@@ -128,6 +128,72 @@ def test_radios_to_entities_defaults_type_other_when_state_lacks_radio_mode(stub
     assert "wireless_lans" not in radio
 
 
+def test_radios_to_entities_warns_on_duplicate_wireless_config(stub_sdk, caplog):
+    """Duplicate wireless_interfaces rows share join key; first-row wins like ports."""
+    base = _wireless_tables(
+        interface_id="radio-1",
+        state={"radio_mode": "_11ax_5g", "power": 12},
+    )
+    first, second = (
+        {
+            "asset_device_id": "cs-ap-1",
+            "asset_interface_id": "radio-1",
+            "name": "wifi0",
+            "enabled": True,
+        },
+        {
+            "asset_device_id": "cs-ap-1",
+            "asset_interface_id": "radio-1",
+            "name": "wifi0",
+            "enabled": False,
+        },
+    )
+    base["cs-ap-1"]["wireless_interfaces"] = [first, second]
+
+    entities = transform.radios_to_entities(base, device_names={"cs-ap-1": "ap-lobby"})
+
+    radio = next(e._kw["interface"]._kw for e in entities if "interface" in e._kw)
+    assert radio["enabled"] is True
+    assert "Multiple wireless_interfaces rows share join key" in caplog.text
+
+
+def test_radios_to_entities_uses_first_nonempty_state_for_rf(stub_sdk):
+    """Empty leading state rows must not hide name/RF fields from a later state row."""
+    tables = {
+        "cs-ap-1": {
+            "wireless_interfaces": [
+                {
+                    "asset_device_id": "cs-ap-1",
+                    "asset_interface_id": "radio-1",
+                    "enabled": True,
+                }
+            ],
+            "wireless_states": [
+                {},
+                {
+                    "asset_device_id": "cs-ap-1",
+                    "asset_interface_id": "radio-1",
+                    "name": "wifi0",
+                    "radio_mode": "_11ax_5g",
+                    "power": 18,
+                    "ssid_name": "Corp",
+                },
+            ],
+            "ssid_configs": [],
+            "ssid_states": [],
+        }
+    }
+    radio = next(
+        e._kw["interface"]._kw
+        for e in transform.radios_to_entities(tables, device_names={"cs-ap-1": "ap-lobby"})
+        if "interface" in e._kw
+    )
+    assert radio["name"] == "wifi0"
+    assert radio["type"] == "ieee802.11ax"
+    assert radio["tx_power"] == 18
+    assert radio["wireless_lans"] == ["Corp"]
+
+
 def test_radios_to_entities_enriches_nested_device_ref(stub_sdk):
     tables = _wireless_tables(interface_id="radio-1", state={"radio_mode": "_11ax_5g"})
     radio = (

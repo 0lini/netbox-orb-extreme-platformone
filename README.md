@@ -482,7 +482,9 @@ transformed from ConfigState tables joined on `asset_interface_id`
 
 ConfigState `retrieve-asset-lag-config` / `retrieve-asset-lag-state` (batched
 by `asset_device_id`, same pattern as ports) map to NetBox LAG interfaces.
-Membership is taken from nested `member_ports` on **lag-config** rows only.
+Membership is taken from nested `member_ports` on lag-config rows when
+present, falling back to the same nested list on lag-state when config
+omits members.
 
 - **LAG parent** is an `Interface` with `type=lag`, name from Platform ONE
   `name` (switches auto-generate one; rows without a name are skipped — no
@@ -501,9 +503,9 @@ Membership is taken from nested `member_ports` on **lag-config** rows only.
   Port-table duplicates are not emitted as a second Interface.
 - **Members** set Diode `Interface.lag` to the parent LAG (by device + name)
   and otherwise use the full physical-port field set when port
-  config/state/capability/PoE/VLAN data exists. Membership comes from
-  lag-config `member_ports` only. Members with no port-config/state row are
-  not stubbed.
+  config/state/capability/PoE/VLAN data exists. Membership prefers
+  lag-config `member_ports`, then lag-state when config has none. Members
+  with no port-config/state row are not stubbed.
 - **Not mapped (LACP / MLT extras):** AssetLagConfig also reports verified
   enums for `mode` (0=UNSET, 1=STATIC, 2=LACP, 3=VLACP, 4=HEALTH_CHECK;
   Fabric Engine: STATIC/LACP/VLACP; Switch Engine: STATIC/LACP/HEALTH_CHECK)

@@ -116,7 +116,7 @@ def _ip_entities_for_interface(
     device: object,
     interface_name: str,
     rows: list[dict],
-    interface_type: str = DEFAULT_INTERFACE_TYPE,
+    interface_type: str | None = DEFAULT_INTERFACE_TYPE,
 ) -> list[Entity]:
     entities: list[Entity] = []
     seen: set[str] = set()
@@ -125,16 +125,17 @@ def _ip_entities_for_interface(
         if not cidr or cidr in seen:
             continue
         seen.add(cidr)
+        # Mirror the parent Interface: omit type when unknown so an IP upsert
+        # cannot re-assert ``other`` over a good prior NetBox value.
+        iface_kwargs: dict = {"device": device, "name": interface_name}
+        if interface_type is not None:
+            iface_kwargs["type"] = interface_type
         entities.append(
             Entity(
                 ip_address=IPAddress(
                     address=cidr,
                     status="active",
-                    assigned_object_interface=Interface(
-                        device=device,
-                        name=interface_name,
-                        type=interface_type,
-                    ),
+                    assigned_object_interface=Interface(**iface_kwargs),
                     tags=PROVENANCE_TAGS,
                 )
             )

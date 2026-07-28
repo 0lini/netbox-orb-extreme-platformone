@@ -107,7 +107,3 @@ def _channel_width_mhz(value) -> float | None:
     if width is not None and width in _VERIFIED_CHANNEL_WIDTH_MHZ:
         return float(width)
     return None
-
-
-def _tx_power(value) -> int | None:
-    return _coerce_int(value)

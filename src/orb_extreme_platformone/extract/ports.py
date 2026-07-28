@@ -78,7 +78,8 @@ def extract_port_tables(
     Returns ``(tables_by_device, failed_tables)``. Independent device-filtered
     tables retrieve concurrently; interface-IP tables run afterward once
     ``asset_interface_id`` values are known. LAG membership comes from
-    nested ``member_ports`` on lag-config rows.
+    nested ``member_ports`` on lag-config rows, falling back to lag-state
+    when config omits members.
     """
     tables_by_device, failed_tables = extract_device_table_buckets(
         client,
