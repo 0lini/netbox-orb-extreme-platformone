@@ -196,6 +196,15 @@ def test_run_sets_device_primary_ip_from_configstate_interface_cidr() -> None:
     assert devices[0].serial == "SN42"
     assert devices[1].primary_ip4.address == "10.0.0.2/24"
 
+    # Position is load-bearing, not incidental: NetBox rejects primary_ip* for an
+    # IP that is not yet assigned to the device, and drops the sibling fields
+    # (serial, custom fields) with it. Assert the IPAddress lands first.
+    kinds = [entity.WhichOneof("entity") for entity in entities]
+    device_positions = [index for index, kind in enumerate(kinds) if kind == "device"]
+    assert kinds.index("ip_address") < device_positions[-1], (
+        "Device(primary_ip*) must be emitted after the IPAddress entity it references"
+    )
+
 
 @responses.activate
 def test_run_batches_every_switch_into_one_call_per_port_table() -> None:
