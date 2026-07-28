@@ -267,6 +267,19 @@ class PlatformOneClient:
             total_pages=lambda payload, page: (payload.get("Pagination") or {}).get("total_pages") or page,
         )
 
+    def _retrieve_chunk(
+        self,
+        table: str,
+        filters: dict,
+        *,
+        page_size: int,
+    ) -> list[dict] | PlatformOneApiError:
+        """Fetch one filter chunk to a list, or return the API error."""
+        try:
+            return list(self._retrieve_pages(table, filters, page_size=page_size))
+        except PlatformOneApiError as exc:
+            return exc
+
     def retrieve(
         self,
         table: str,
@@ -298,20 +311,21 @@ class PlatformOneClient:
                 errors: list[PlatformOneApiError] = []
                 completed = 0
                 for chunk in chunks:
-                    try:
-                        yield from self._retrieve_pages(
-                            table, {**filters, field: chunk}, page_size=page_size
-                        )
-                        completed += 1
-                    except PlatformOneApiError as exc:
-                        errors.append(exc)
+                    result = self._retrieve_chunk(
+                        table, {**filters, field: chunk}, page_size=page_size
+                    )
+                    if isinstance(result, PlatformOneApiError):
+                        errors.append(result)
                         logger.warning(
                             "ConfigState retrieve-%s filter chunk failed (%d IDs); "
                             "continuing with remaining chunks: %s",
                             table,
                             len(chunk),
-                            exc,
+                            result,
                         )
+                        continue
+                    completed += 1
+                    yield from result
                 if errors and completed == 0:
                     raise errors[0]
                 return

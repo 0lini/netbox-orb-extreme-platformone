@@ -294,9 +294,7 @@ def test_radios_to_entities_omits_auth_for_unrecognized_encryption(stub_sdk):
             "wireless_interfaces": [],
             "wireless_states": [],
             "ssid_configs": [{"asset_device_id": "cs-ap-1", "name": "Corp", "enabled": True}],
-            "ssid_states": [
-                {"asset_device_id": "cs-ap-1", "name": "Corp", "encryption": "MYSTERY_SUITE"}
-            ],
+            "ssid_states": [{"asset_device_id": "cs-ap-1", "name": "Corp", "encryption": "MYSTERY_SUITE"}],
         }
     }
     wlan = (
