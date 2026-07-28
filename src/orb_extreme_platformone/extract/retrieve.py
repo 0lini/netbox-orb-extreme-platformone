@@ -17,6 +17,14 @@ logger = get_logger(__name__)
 # Catalog: transform key -> (retrieve-* table, GetRequest filter field).
 TableCatalog = dict[str, tuple[str, str]]
 
+# One pool for the whole process. A pool per fan-out would create fresh threads
+# each phase, and the client's sessions are thread-local — so every phase would
+# pay a new TLS handshake per table instead of reusing pooled connections.
+_POOL = ThreadPoolExecutor(
+    max_workers=MAX_CONCURRENT_REQUESTS,
+    thread_name_prefix="p1-retrieve",
+)
+
 
 class RetrieveResult(NamedTuple):
     """One ConfigState retrieve outcome: rows on success, error on failure."""
@@ -58,11 +66,9 @@ def retrieve_parallel(
             # auth failure by the fail-fast check in retrieve_ok.
             return RetrieveResult(table, None, PlatformOneApiError(f"unexpected error: {exc}"))
 
-    workers = min(len(jobs), MAX_CONCURRENT_REQUESTS)
-    with ThreadPoolExecutor(max_workers=workers) as pool:
-        futures = [pool.submit(_run_job, table, filters) for table, filters in jobs]
-        # result() in submit order: work still overlaps; merge stays deterministic.
-        return [fut.result() for fut in futures]
+    futures = [_POOL.submit(_run_job, table, filters) for table, filters in jobs]
+    # result() in submit order: work still overlaps; merge stays deterministic.
+    return [fut.result() for fut in futures]
 
 
 def retrieve_ok(

@@ -58,6 +58,10 @@ except PackageNotFoundError:
 # switch-OS devices regardless (see is_switch).
 DEFAULT_CLASSIFICATION = "ALL"
 
+# Per-tick discovery phases an operator can switch off with `disable_domains`
+# when one starts misbehaving, without editing code and redeploying.
+DISCOVERY_DOMAINS = ("virtual_chassis", "ports", "wireless")
+
 # Re-exported for tests / contract checks that historically imported catalogs
 # from this module.
 __all__ = [
@@ -136,6 +140,32 @@ def _cfg_bool(config: object, key: str, *, default: bool = False) -> bool:
     if raw is None:
         return default
     return raw.strip().casefold() in {"1", "true", "yes", "on"}
+
+
+def _enabled_domains(config) -> set[str]:
+    """Discovery domains to run this tick; `disable_domains` opts phases out.
+
+    Note the coupling: disabling ``ports`` also drops Device primary IPs and
+    the ISIS/SPBM custom fields, because the port fan-out is what supplies them.
+    """
+    raw = _cfg(config, "disable_domains", None)
+    if raw is None:
+        return set(DISCOVERY_DOMAINS)
+    if isinstance(raw, str):
+        disabled = {raw.strip()}
+    elif isinstance(raw, (list, tuple, set)):
+        disabled = {str(item).strip() for item in raw if str(item).strip()}
+    else:
+        logger.warning("Ignoring invalid disable_domains %r; running every domain", raw)
+        return set(DISCOVERY_DOMAINS)
+    unknown = sorted(disabled - set(DISCOVERY_DOMAINS))
+    if unknown:
+        logger.warning(
+            "Ignoring unknown disable_domains entries %s; known domains: %s",
+            ", ".join(unknown),
+            ", ".join(DISCOVERY_DOMAINS),
+        )
+    return set(DISCOVERY_DOMAINS) - disabled
 
 
 def _scope_sites(scope) -> list[str] | None:
@@ -327,16 +357,26 @@ class Backend(WorkerBackend):
             len(scoped),
         )
 
-        vc_entities, vc_memberships = self._virtual_chassis_entities(client, scoped, policy_name)
+        domains = _enabled_domains(config)
+        if domains != set(DISCOVERY_DOMAINS):
+            logger.info(
+                "Policy %s: discovery domains disabled by policy: %s",
+                policy_name,
+                ", ".join(sorted(set(DISCOVERY_DOMAINS) - domains)),
+            )
+
+        vc_entities, vc_memberships = (
+            self._virtual_chassis_entities(client, scoped, policy_name)
+            if "virtual_chassis" in domains
+            else ([], {})
+        )
         # Port/LAG/IP + fabric (ISIS/SPBM) tables are fetched before Device
         # entities so primary_ip can use ConfigState interface CIDRs and so
         # Device CFs can carry ISIS area / system id / SPBM nickname.
-        port_entities, primary_ips_by_cs_id, fabric_by_cs_id = self._port_entities(
-            client,
-            scoped,
-            policy_name,
+        port_entities, primary_ips_by_cs_id, fabric_by_cs_id = (
+            self._port_entities(client, scoped, policy_name) if "ports" in domains else ([], {}, {})
         )
-        radio_entities = self._radio_entities(client, scoped, policy_name)
+        radio_entities = self._radio_entities(client, scoped, policy_name) if "wireless" in domains else []
         # Emit Devices *without* primary_ip* first so serial / custom fields are
         # not bundled into a Diode update that NetBox rejects when the IP is not
         # yet assigned. Assert primary_ip* in a follow-up after port/IP entities.

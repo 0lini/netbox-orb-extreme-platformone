@@ -161,3 +161,58 @@ def test_policy_name_is_set_for_the_duration_of_a_tick(caplog) -> None:
 
     assert seen, "the tick should log something"
     assert all(name == "my_policy" for name in seen), seen
+
+
+# ---------------------------------------------------------------------------
+# Domain feature flags
+# ---------------------------------------------------------------------------
+
+
+def _domain_policy(disabled):
+    policy = _policy()
+    policy.config.disable_domains = disabled
+    return policy
+
+
+@responses.activate
+def test_disabling_wireless_skips_its_configstate_calls() -> None:
+    _mock_assets([SWITCH_ASSET])
+    _mock_cs("asset-device", "AssetDevice", [CS_SWITCH])
+    _mock_cs("asset-location", "AssetLocation", [])
+    _mock_empty_port_and_lag_tables()
+    _mock_empty_clusters()
+
+    list(Backend().run("platformone_worker", _domain_policy(["wireless"])))
+
+    assert not any("asset-wireless-interface" in c.request.url for c in responses.calls)
+
+
+@responses.activate
+def test_disabling_ports_skips_port_and_fabric_calls() -> None:
+    _mock_assets([SWITCH_ASSET])
+    _mock_cs("asset-device", "AssetDevice", [CS_SWITCH])
+    _mock_cs("asset-location", "AssetLocation", [])
+    _mock_empty_clusters()
+
+    entities = list(Backend().run("platformone_worker", _domain_policy(["ports"])))
+
+    assert not any("asset-port-config" in c.request.url for c in responses.calls)
+    assert not any("asset-isis-global-config" in c.request.url for c in responses.calls)
+    # Devices still sync; only the port-derived detail is missing.
+    assert any(e.HasField("device") for e in entities)
+
+
+@responses.activate
+def test_unknown_disable_domains_entries_warn_and_are_ignored(caplog) -> None:
+    _mock_assets([SWITCH_ASSET])
+    _mock_cs("asset-device", "AssetDevice", [CS_SWITCH])
+    _mock_cs("asset-location", "AssetLocation", [])
+    _mock_empty_port_and_lag_tables()
+    _mock_empty_clusters()
+
+    with caplog.at_level(logging.WARNING, logger="orb_extreme_platformone"):
+        list(Backend().run("platformone_worker", _domain_policy(["nonsense"])))
+
+    assert any("Ignoring unknown disable_domains" in r.message for r in caplog.records)
+    # Nothing was actually disabled.
+    assert any("asset-port-config" in c.request.url for c in responses.calls)

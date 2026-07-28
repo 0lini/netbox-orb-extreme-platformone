@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from orb_extreme_platformone.client import CONFIGSTATE_FILTER_CHUNK_SIZE
+
 from .retrieve import extract_device_table_buckets, retrieve_ok
 from .tables import INTERFACE_ID_TABLES, PORT_TABLES
 
@@ -46,6 +48,11 @@ def attach_interface_id_tables(
     ``retrieve-asset-interface-ip-address`` has no device filter; rows are
     bucketed back onto devices via the interface→device map from port/LAG/
     VLAN/PoE rows.
+
+    The UUID list spans every in-scope switch, so it is chunked here rather
+    than inside ``client.retrieve``: chunking at this level lets the chunks run
+    concurrently. Doing it in the client walks them one at a time, which on a
+    large estate is the single biggest wall-clock cost of a tick.
     """
     interface_to_device = collect_interface_ids(tables_by_device)
     for tables in tables_by_device.values():
@@ -55,11 +62,20 @@ def attach_interface_id_tables(
         return
 
     interface_ids = sorted(interface_to_device)
-    jobs = [(table, {filter_field: interface_ids}) for table, filter_field in INTERFACE_ID_TABLES.values()]
+    jobs: list[tuple[str, dict]] = []
+    contexts: list[str] = []
+    for key, (table, filter_field) in INTERFACE_ID_TABLES.items():
+        for start in range(0, len(interface_ids), CONFIGSTATE_FILTER_CHUNK_SIZE):
+            chunk = interface_ids[start : start + CONFIGSTATE_FILTER_CHUNK_SIZE]
+            jobs.append((table, {filter_field: chunk}))
+            contexts.append(key)
+
+    # retrieve_ok tolerates repeated context values and records per-chunk
+    # failures independently, so per-chunk degradation is preserved.
     for key, rows in retrieve_ok(
         client,
         jobs,
-        list(INTERFACE_ID_TABLES),
+        contexts,
         policy_name=policy_name,
         failed_tables=failed_tables,
         degradation="ports sync without it",
