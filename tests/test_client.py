@@ -333,3 +333,84 @@ def test_invalid_json_raises_platform_one_api_error() -> None:
 
     with pytest.raises(PlatformOneApiError, match="invalid JSON"):
         list(_client().get_devices())
+
+
+# ---------------------------------------------------------------------------
+# Error-body redaction and malformed-response tolerance
+# ---------------------------------------------------------------------------
+
+
+def test_truncate_error_body_redacts_echoed_credentials() -> None:
+    """A gateway that echoes the request body must not leak the login password."""
+    body = '{"error": "bad creds for {"username": "admin", "password": "hunter2"}"}'
+    out = truncate_error_body(body, limit=500)
+    assert "hunter2" not in out
+    assert "[REDACTED]" in out
+
+
+@pytest.mark.parametrize(
+    "field",
+    ["password", "client_secret", "access_token", "refresh_token", "api_token", "authorization"],
+)
+def test_truncate_error_body_redacts_every_secret_field(field: str) -> None:
+    assert "s3cret" not in truncate_error_body(f'{{"{field}": "s3cret"}}', limit=500)
+
+
+@responses.activate
+def test_login_failure_does_not_leak_password_into_the_exception() -> None:
+    responses.add(
+        responses.POST,
+        f"{DEFAULT_BASE_URL}/login",
+        body='{"error": "rejected {"username": "admin", "password": "hunter2"}"}',
+        status=401,
+    )
+    client = PlatformOneClient(username="admin", password="hunter2")
+    with pytest.raises(PlatformOneApiError) as excinfo:
+        list(client.get_devices())
+    assert "hunter2" not in str(excinfo.value)
+
+
+@responses.activate
+def test_retrieve_rejects_non_list_records_as_api_error() -> None:
+    """A malformed 200 must degrade this table, not raise TypeError out of the thread."""
+    responses.add(
+        responses.POST,
+        f"{DEFAULT_BASE_URL}/configstate/v1/retrieve-asset-port-state",
+        json={"AssetPortState": 5, "Pagination": {"total_pages": 1}},
+        status=200,
+    )
+    client = PlatformOneClient(api_token="t")
+    with pytest.raises(PlatformOneApiError, match="non-list"):
+        list(client.retrieve("asset-port-state", {"asset_device_id": ["x"]}))
+
+
+@responses.activate
+def test_retrieve_tolerates_a_string_total_pages() -> None:
+    """`total_pages: "2"` used to raise TypeError comparing int >= str."""
+    responses.add(
+        responses.POST,
+        f"{DEFAULT_BASE_URL}/configstate/v1/retrieve-asset-port-state",
+        json={"AssetPortState": [{"a": 1}], "Pagination": {"total_pages": "2"}},
+        status=200,
+    )
+    responses.add(
+        responses.POST,
+        f"{DEFAULT_BASE_URL}/configstate/v1/retrieve-asset-port-state",
+        json={"AssetPortState": [{"a": 2}], "Pagination": {"total_pages": "2"}},
+        status=200,
+    )
+    client = PlatformOneClient(api_token="t")
+    assert list(client.retrieve("asset-port-state", {"asset_device_id": ["x"]})) == [{"a": 1}, {"a": 2}]
+
+
+@responses.activate
+def test_retrieve_tolerates_a_garbage_total_pages() -> None:
+    """An unparseable page count stops after the current page instead of raising."""
+    responses.add(
+        responses.POST,
+        f"{DEFAULT_BASE_URL}/configstate/v1/retrieve-asset-port-state",
+        json={"AssetPortState": [{"a": 1}], "Pagination": {"total_pages": None}},
+        status=200,
+    )
+    client = PlatformOneClient(api_token="t")
+    assert list(client.retrieve("asset-port-state", {"asset_device_id": ["x"]})) == [{"a": 1}]

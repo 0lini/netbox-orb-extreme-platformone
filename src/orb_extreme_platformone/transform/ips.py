@@ -9,6 +9,8 @@ from netboxlabs.diode.sdk.ingester import Entity, Interface, IPAddress
 from .common import PROVENANCE_TAGS, _explicit_cidr, _interface_identity_kwargs
 from .port_constants import VIRTUAL_INTERFACE_TYPE
 
+_IPV4_VERSION = 4
+
 
 def _mgmt_interface_ids(tables: dict[str, list[dict]]) -> set[str]:
     """Interface UUIDs flagged management_port via port capabilities + port rows."""
@@ -32,8 +34,8 @@ def _pick_primary_cidr(candidates: list[tuple[int, str]]) -> dict[str, str]:
     """Keep the first CIDR per address family from ranked candidates."""
     result: dict[str, str] = {}
     for version, cidr in candidates:
-        key = "primary_ip4" if version == 4 else "primary_ip6"
-        result.setdefault(key, cidr)
+        field = "primary_ip4" if version == _IPV4_VERSION else "primary_ip6"
+        result.setdefault(field, cidr)
     return result
 
 

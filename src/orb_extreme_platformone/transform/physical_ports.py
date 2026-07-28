@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-from netboxlabs.diode.sdk.ingester import Entity, Interface
+from netboxlabs.diode.sdk.ingester import Device, Entity, Interface
 
 from .common import _coerce_int, _interface_identity_kwargs, _normalized_mac
 from .ips import _ip_entities_for_interface
 from .port_constants import (
     _TYPE_BY_SPEED_AND_CONNECTOR,
+    LAG_INTERFACE_TYPE,
     OPER_STATE_UP,
     VERIFIED_CONFIG_DUPLEX,
     VERIFIED_OPER_DUPLEX,
@@ -57,7 +58,7 @@ def _duplex(state: dict, config: dict) -> str | None:
 
 def _iface_base_kwargs(
     *,
-    device: object,
+    device: Device,
     name: str,
     interface_id: str | None,
     config: dict,
@@ -82,7 +83,7 @@ def _iface_base_kwargs(
 
 def _port_kwargs(
     *,
-    device: object,
+    device: Device,
     name: str,
     interface_id: str | None,
     config: dict,
@@ -136,7 +137,7 @@ def _port_kwargs(
 
 def _physical_port_entities(
     *,
-    device: object,
+    device: Device,
     configs: dict[str, list[dict]],
     states: dict[str, list[dict]],
     vlans: dict[str, list[dict]],
@@ -177,7 +178,7 @@ def _physical_port_entities(
         )
         lag_parent = membership.get(name)
         if lag_parent:
-            kwargs["lag"] = Interface(device=device, name=lag_parent, type="lag")
+            kwargs["lag"] = Interface(device=device, name=lag_parent, type=LAG_INTERFACE_TYPE)
         entities.append(Entity(interface=Interface(**kwargs)))
         emitted_keys[key] = name
         entities.extend(

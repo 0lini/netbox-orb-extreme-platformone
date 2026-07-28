@@ -18,6 +18,7 @@ PORT_ENTITY_TABLE_KEYS = frozenset(PORT_TABLES) | frozenset(INTERFACE_ID_TABLES)
 # type only from a verified speed/connector or radio_mode map — never invent
 # ``other``.
 VIRTUAL_INTERFACE_TYPE = "virtual"
+LAG_INTERFACE_TYPE = "lag"
 
 # ConfigState reports oper_speed / connector_type as integer codes with no
 # OpenAPI value table; only codes verified against production hardware (or

@@ -91,7 +91,6 @@ markers = [
 [tool.coverage.run]
 branch = true
 source = ["orb_extreme_platformone"]
-omit = ["*/orb_extreme_platformone/__main__.py"]
 
 [tool.coverage.report]
 show_missing = true

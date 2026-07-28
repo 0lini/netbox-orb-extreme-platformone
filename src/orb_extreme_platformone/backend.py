@@ -15,7 +15,7 @@ import logging
 import os
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as pkg_version
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, overload
 
 from worker.backend import Backend as WorkerBackend
 from worker.models import Metadata, Policy
@@ -81,16 +81,56 @@ def _log_failed_tables(policy_name: str, failed_tables: list[str], *, domain: st
     )
 
 
-def _cfg(config, key: str, default=None):
+def _cfg(config: object, key: str, default: object = None) -> object:
     return getattr(config, key, default) if config is not None else default
 
 
-def _cfg_or_env(config, key: str, *, default=None):
-    """Policy config wins when set (including empty string); else environment."""
+@overload
+def _cfg_or_env(config: object, key: str, *, env_key: str | None = ..., default: str) -> str: ...
+
+
+@overload
+def _cfg_or_env(
+    config: object,
+    key: str,
+    *,
+    env_key: str | None = ...,
+    default: None = ...,
+) -> str | None: ...
+
+
+def _cfg_or_env(
+    config: object,
+    key: str,
+    *,
+    env_key: str | None = None,
+    default: str | None = None,
+) -> str | None:
+    """Policy config wins when set (including empty string); else environment.
+
+    ``env_key`` names the environment variable when it differs from the policy
+    key (the policy key is the documented ``agent.yaml`` contract, while the
+    environment spelling is conventionally upper-case).
+    """
     value = _cfg(config, key, None)
     if value is not None:
+        return str(value)
+    return os.environ.get(env_key or key, default)
+
+
+def _cfg_bool(config: object, key: str, *, default: bool = False) -> bool:
+    """Resolve a boolean policy key, coercing environment strings.
+
+    Environment values arrive as strings, so a bare truthiness test would read
+    ``BOOTSTRAP=false`` as enabled.
+    """
+    value = _cfg(config, key, None)
+    if isinstance(value, bool):
         return value
-    return os.environ.get(key, default)
+    raw = os.environ.get(key) if value is None else str(value)
+    if raw is None:
+        return default
+    return raw.strip().casefold() in {"1", "true", "yes", "on"}
 
 
 def _scope_sites(scope) -> list[str] | None:
@@ -127,12 +167,14 @@ def _records_by_cs_id(records: list[dict], *, predicate) -> dict[str, dict]:
         if not cs_id or not predicate(record):
             continue
         if cs_id in by_id:
+            duplicate = asset_label(record["asset"])
             logger.warning(
-                "Duplicate ConfigState device id %s across Assets rows "
-                "(%r and %r); keeping the first for table fan-out",
+                "Duplicate ConfigState device id %s across Assets rows (%r and %r); "
+                "keeping the first — %r will sync as a Device with no ports/radios/VC",
                 cs_id,
                 asset_label(by_id[cs_id]["asset"]),
-                asset_label(record["asset"]),
+                duplicate,
+                duplicate,
             )
             continue
         by_id[cs_id] = record
@@ -212,7 +254,7 @@ class Backend(WorkerBackend):
     def run(self, policy_name: str, policy: Policy, **_kwargs) -> Iterable[Entity]:
         config = policy.config
 
-        if _cfg(config, "BOOTSTRAP", False):
+        if _cfg_bool(config, "BOOTSTRAP"):
             netbox_url = _cfg_or_env(config, "NETBOX_API_URL")
             netbox_token = _cfg_or_env(config, "NETBOX_API_TOKEN")
             if not netbox_url or not netbox_token:
@@ -227,7 +269,12 @@ class Backend(WorkerBackend):
             bootstrap.ensure_schema(netbox_url, netbox_token)
 
         client = _build_client(config)
-        classification = _cfg(config, "classification", DEFAULT_CLASSIFICATION)
+        classification = _cfg_or_env(
+            config,
+            "classification",
+            env_key="PLATFORMONE_CLASSIFICATION",
+            default=DEFAULT_CLASSIFICATION,
+        )
         assets = list(client.get_devices(classification=classification))
 
         records = correlated_records(client, assets, policy_name)

@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from netboxlabs.diode.sdk.ingester import Entity, Interface
+from netboxlabs.diode.sdk.ingester import Device, Entity, Interface
 
 from .common import _coerce_bool, _normalized_mac, logger
 from .ips import _ip_entities_for_interface
 from .physical_ports import _iface_base_kwargs
+from .port_constants import LAG_INTERFACE_TYPE
 from .port_join import _by_key, _first_row, _optional_first_row
 from .vlans import _vlan_fields, _vlan_records_for
 
@@ -102,7 +103,7 @@ def _lag_membership(joined_rows: list[LagRow]) -> dict[str, str]:
 
 def _lag_kwargs(
     *,
-    device: object,
+    device: Device,
     name: str,
     interface_id: str | None,
     config: dict,
@@ -140,7 +141,7 @@ def _lag_kwargs(
         poe_state=poe_state,
         poe_config=poe_config,
     )
-    kwargs["type"] = "lag"
+    kwargs["type"] = LAG_INTERFACE_TYPE
     kwargs["enabled"] = _lag_admin_enabled(port_config)
 
     kwargs.update(_vlan_fields(vlan_records))
@@ -159,7 +160,7 @@ def _lag_kwargs(
 
 def _lag_entities(
     *,
-    device: object,
+    device: Device,
     lag_configs: list[dict],
     lag_states: list[dict],
     vlans: dict[str, list[dict]],
@@ -208,7 +209,7 @@ def _lag_entities(
                 device=device,
                 interface_name=name,
                 rows=interface_ips.get(key, []),
-                interface_type="lag",
+                interface_type=LAG_INTERFACE_TYPE,
             ),
         )
 

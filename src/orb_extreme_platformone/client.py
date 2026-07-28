@@ -21,6 +21,7 @@ tests/test_openapi_contract.py.
 from __future__ import annotations
 
 import logging
+import re
 import threading
 import time
 from typing import TYPE_CHECKING
@@ -44,8 +45,34 @@ _ERROR_BODY_LIMIT = 200
 # Refresh a minute early so a request never races token expiry.
 _TOKEN_REFRESH_SKEW_SECONDS = 60
 _DEFAULT_TOKEN_TTL_SECONDS = 86400
+# Guard against a server that never stops reporting more pages: without this a
+# misreported total_pages loops forever at one timeout per request.
+_MAX_PAGES = 10_000
+_ELLIPSIS = "..."
+_REDACTED = "[REDACTED]"
+# Some gateways echo the request body back in an error response. Redact the
+# secret-bearing JSON fields before that text reaches an exception or a log.
+_SECRET_FIELD_RE = re.compile(
+    r'("(?:password|client_secret|access_token|refresh_token|api_token|authorization)"\s*:\s*)"[^"]*"',
+    re.IGNORECASE,
+)
 
 logger = logging.getLogger("orb_extreme_platformone.client")
+
+
+def _coerce_page_count(value, *, default: int) -> int:
+    """Page counts arrive as ints; tolerate digit strings, reject anything else.
+
+    A malformed-but-200 body must degrade this table, not raise TypeError out of
+    the pool thread and abort the whole fan-out.
+    """
+    if isinstance(value, bool):
+        return default
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str) and value.strip().isdigit():
+        return int(value.strip())
+    return default
 
 
 def _chunked(values: list, size: int):
@@ -62,13 +89,19 @@ class PlatformOneApiError(RuntimeError):
 
 
 def truncate_error_body(text: str, *, limit: int = _ERROR_BODY_LIMIT) -> str:
-    """Collapse whitespace and truncate an HTTP error body for safe logging."""
+    """Collapse whitespace, redact echoed secrets, and truncate for safe logging.
+
+    Truncation alone bounds length but not content: an upstream that echoes the
+    request body in an error response would otherwise put the login password
+    into the exception message and every log line that formats it.
+    """
     cleaned = " ".join((text or "").split())
+    cleaned = _SECRET_FIELD_RE.sub(rf'\1"{_REDACTED}"', cleaned)
     if len(cleaned) <= limit:
         return cleaned
-    if limit <= 3:
+    if limit <= len(_ELLIPSIS):
         return cleaned[:limit]
-    return cleaned[: limit - 3] + "..."
+    return cleaned[: limit - len(_ELLIPSIS)] + _ELLIPSIS
 
 
 def configstate_response_key(table: str) -> str:
@@ -241,9 +274,24 @@ class PlatformOneClient:
         page = 1
         while True:
             payload = self._post(path, {page_param: page, size_param: size}, body)
-            yield from payload.get(response_key) or []
-            last_page = total_pages(payload, page)
+            records = payload.get(response_key) or []
+            if not isinstance(records, list):
+                msg = (
+                    f"Platform ONE API returned non-list {response_key!r} for {path}: "
+                    f"{type(records).__name__}"
+                )
+                raise PlatformOneApiError(msg)
+            yield from records
+            last_page = _coerce_page_count(total_pages(payload, page), default=page)
             if page >= last_page:
+                break
+            if page >= _MAX_PAGES:
+                logger.warning(
+                    "Stopping %s pagination at page %d (server reported %s pages)",
+                    path,
+                    page,
+                    last_page,
+                )
                 break
             page += 1
 

@@ -8,6 +8,10 @@ from orb_extreme_platformone.identity import device_name, resolve_location
 
 from .common import CF_CLUSTER_ID, PROVENANCE_TAGS, _cf_text, _device_ref, logger
 
+# A chassis name needs two distinct names so a shared placeholder ("Default")
+# cannot collapse every chassis to one NetBox name.
+_MIN_DISTINCT_NAMES = 2
+
 
 def _virtual_chassis_name(cluster: dict, device_one_name: str, device_two_name: str) -> str | None:
     """Stable VirtualChassis name from peer names or member device names.
@@ -19,10 +23,10 @@ def _virtual_chassis_name(cluster: dict, device_one_name: str, device_two_name: 
     peers = sorted(
         {name for name in (cluster.get("device_one_peer_name"), cluster.get("device_two_peer_name")) if name},
     )
-    if len(peers) >= 2:
+    if len(peers) >= _MIN_DISTINCT_NAMES:
         return " / ".join(peers)
     members = sorted({device_one_name, device_two_name})
-    if len(members) >= 2:
+    if len(members) >= _MIN_DISTINCT_NAMES:
         return " / ".join(members)
     return None
 

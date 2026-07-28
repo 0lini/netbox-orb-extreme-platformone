@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 
-from netboxlabs.diode.sdk.ingester import Entity, Interface, WirelessLAN
+from netboxlabs.diode.sdk.ingester import Device, Entity, Interface, WirelessLAN
 
 from orb_extreme_platformone.extract.tables import WIRELESS_TABLES
 
@@ -61,7 +61,7 @@ def _primary_wireless_state(states: list[dict]) -> dict:
 
 def _radio_interface_kwargs(
     *,
-    device,
+    device: Device,
     name: str,
     config: dict,
     state: dict,
