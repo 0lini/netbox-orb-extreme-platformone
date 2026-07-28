@@ -29,6 +29,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   later chunk fails (raise only if every chunk fails).
 - Wireless radio config joins warn on duplicate `asset_interface_id` rows
   (first-row wins, same as ports) and use one primary-state helper for name/RF.
+- Stop inventing NetBox values when Platform ONE omits the source field:
+  Device `status`, WirelessLAN `status` / `auth_*`, and Interface `type`
+  are omitted instead of defaulting to `active` / `open`/`auto` / `other`.
 
 ## [0.2.0] - 2026-07-25
 

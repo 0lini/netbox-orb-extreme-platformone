@@ -106,8 +106,8 @@ def test_radios_to_entities_omits_type_when_wireless_state_missing(stub_sdk):
     assert radio["device"]._kw["name"] == "ap-lobby"
 
 
-def test_radios_to_entities_defaults_type_other_when_state_lacks_radio_mode(stub_sdk):
-    """A state row without radio_mode still needs a type; RF/WLAN stay gated off."""
+def test_radios_to_entities_omits_type_when_state_lacks_radio_mode(stub_sdk):
+    """A state row without radio_mode omits type; RF/WLAN stay gated off."""
     tables = _wireless_tables(
         interface_id="radio-1",
         state={"band": "5GHz", "channel": 36},
@@ -123,7 +123,7 @@ def test_radios_to_entities_defaults_type_other_when_state_lacks_radio_mode(stub
         for e in transform.radios_to_entities(tables, device_names={"cs-ap-1": "ap-lobby"})
         if "interface" in e._kw
     )
-    assert radio["type"] == "other"
+    assert "type" not in radio
     assert "rf_role" not in radio
     assert "wireless_lans" not in radio
 
@@ -249,13 +249,10 @@ def test_radios_to_entities_accepts_band_enum_style_labels(stub_sdk, band, chann
         ("WPA2-PSK", "wpa-personal", "aes"),
         ("TYPE_802DOT1X", "wpa-enterprise", "auto"),
         ("WEP", "wep", "wep"),
-        (None, "open", "auto"),
     ],
 )
 def test_radios_to_entities_maps_ssid_encryption_to_auth(stub_sdk, encryption, auth_type, auth_cipher):
-    ssid_state = {"asset_device_id": "cs-ap-1", "name": "Corp", "if_names": "wifi0"}
-    if encryption is not None:
-        ssid_state["encryption"] = encryption
+    ssid_state = {"asset_device_id": "cs-ap-1", "name": "Corp", "if_names": "wifi0", "encryption": encryption}
     tables = {
         "cs-ap-1": {
             "wireless_interfaces": [],
@@ -271,13 +268,14 @@ def test_radios_to_entities_maps_ssid_encryption_to_auth(stub_sdk, encryption, a
     assert wlan["auth_cipher"] == auth_cipher
 
 
-def test_radios_to_entities_defaults_wlan_status_active_when_enabled_unknown(stub_sdk):
+def test_radios_to_entities_omits_auth_and_status_when_unknown(stub_sdk):
+    """Missing enabled/encryption must not invent active/open/auto."""
     tables = {
         "cs-ap-1": {
             "wireless_interfaces": [],
             "wireless_states": [],
             "ssid_configs": [{"asset_device_id": "cs-ap-1", "name": "Corp", "if_names": "wifi0"}],
-            "ssid_states": [{"asset_device_id": "cs-ap-1", "name": "Corp", "encryption": "OPEN"}],
+            "ssid_states": [{"asset_device_id": "cs-ap-1", "name": "Corp"}],
         }
     }
 
@@ -285,9 +283,28 @@ def test_radios_to_entities_defaults_wlan_status_active_when_enabled_unknown(stu
         transform.radios_to_entities(tables, device_names={"cs-ap-1": "ap-lobby"})[0]._kw["wireless_lan"]._kw
     )
     assert wlan["ssid"] == "Corp"
+    assert "status" not in wlan
+    assert "auth_type" not in wlan
+    assert "auth_cipher" not in wlan
+
+
+def test_radios_to_entities_omits_auth_for_unrecognized_encryption(stub_sdk):
+    tables = {
+        "cs-ap-1": {
+            "wireless_interfaces": [],
+            "wireless_states": [],
+            "ssid_configs": [{"asset_device_id": "cs-ap-1", "name": "Corp", "enabled": True}],
+            "ssid_states": [
+                {"asset_device_id": "cs-ap-1", "name": "Corp", "encryption": "MYSTERY_SUITE"}
+            ],
+        }
+    }
+    wlan = (
+        transform.radios_to_entities(tables, device_names={"cs-ap-1": "ap-lobby"})[0]._kw["wireless_lan"]._kw
+    )
     assert wlan["status"] == "active"
-    assert wlan["auth_type"] == "open"
-    assert wlan["auth_cipher"] == "auto"
+    assert "auth_type" not in wlan
+    assert "auth_cipher" not in wlan
 
 
 def test_radios_to_entities_merges_ssid_enabled_across_aps(stub_sdk, caplog):

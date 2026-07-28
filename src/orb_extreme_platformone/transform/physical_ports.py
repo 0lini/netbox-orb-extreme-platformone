@@ -8,7 +8,6 @@ from .common import _coerce_int, _interface_identity_kwargs, _normalized_mac
 from .ips import _ip_entities_for_interface
 from .port_constants import (
     _TYPE_BY_SPEED_AND_CONNECTOR,
-    DEFAULT_INTERFACE_TYPE,
     OPER_STATE_UP,
     VERIFIED_CONFIG_DUPLEX,
     VERIFIED_OPER_DUPLEX,
@@ -116,14 +115,11 @@ def _port_kwargs(
     duplex = _duplex(state, config)
     if duplex is not None:
         kwargs["duplex"] = duplex
-    # Assert type only when state reports speed/connector codes. Verified map
-    # wins; unknown codes → ``other``. Omitting type when state is absent
-    # avoids upserting ``other`` over a good prior type on port-state degrade.
+    # Assert type only when speed/connector map to a verified NetBox type.
+    # Unknown codes omit type — do not invent ``other``.
     mapped_type = _TYPE_BY_SPEED_AND_CONNECTOR.get((oper_speed, connector_type))
     if mapped_type is not None:
         kwargs["type"] = mapped_type
-    elif oper_speed is not None or connector_type is not None:
-        kwargs["type"] = DEFAULT_INTERFACE_TYPE
 
     if config.get("description"):
         kwargs["description"] = config["description"]

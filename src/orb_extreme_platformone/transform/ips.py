@@ -7,7 +7,7 @@ import ipaddress
 from netboxlabs.diode.sdk.ingester import Entity, Interface, IPAddress
 
 from .common import PROVENANCE_TAGS, _explicit_cidr, _interface_identity_kwargs
-from .port_constants import DEFAULT_INTERFACE_TYPE, VIRTUAL_INTERFACE_TYPE
+from .port_constants import VIRTUAL_INTERFACE_TYPE
 
 
 def _mgmt_interface_ids(tables: dict[str, list[dict]]) -> set[str]:
@@ -116,7 +116,7 @@ def _ip_entities_for_interface(
     device: object,
     interface_name: str,
     rows: list[dict],
-    interface_type: str | None = DEFAULT_INTERFACE_TYPE,
+    interface_type: str | None = None,
 ) -> list[Entity]:
     entities: list[Entity] = []
     seen: set[str] = set()

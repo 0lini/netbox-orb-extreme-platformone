@@ -86,17 +86,15 @@ def test_ports_to_entities_admin_down_and_link_down_are_independent(stub_sdk):
     assert port["mark_connected"] is False
 
 
-def test_ports_to_entities_unverified_enum_codes_default_type_other(stub_sdk):
-    """ConfigState's integer enums have no published value table; codes not
-    verified against a real device must not map to speed/duplex, but NetBox
-    requires Interface.type so unknown ports fall back to ``other``."""
+def test_ports_to_entities_omits_type_for_unverified_enum_codes(stub_sdk):
+    """Unknown oper_speed/connector_type must not invent Interface.type=other."""
     state = {**PORT_STATE, "oper_speed": 7, "oper_duplex": 9, "connector_type": 3}
     entities = transform.ports_to_entities(_tables(port_states=[state], vlan_properties=[]), device="sw-idf1")
 
     port = entities[0]._kw["interface"]._kw
     assert "speed" not in port
     assert "duplex" not in port
-    assert port["type"] == "other"
+    assert "type" not in port
 
 
 def test_ports_to_entities_fiber_gig_port_maps_to_sfp_type(stub_sdk):

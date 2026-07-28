@@ -32,17 +32,18 @@ from .common import (
 )
 
 
-def _status_for(asset: dict) -> str:
-    """Map Assets `is_connected` to Device status (Meraki-style defaults).
+def _status_for(asset: dict) -> str | None:
+    """Map Assets `is_connected` to Device status when known.
 
-    ``true`` → ``active``, ``false`` → ``offline``. Missing/unknown defaults
-    to ``active`` — same posture as Cisco Meraki (any other / no status →
-    active) and open Orb device-discovery (always active).
+    ``true`` → ``active``, ``false`` → ``offline``. Missing/unknown values
+    assert nothing — do not invent ``active``.
     """
     connected = asset.get("is_connected")
+    if connected is True:
+        return "active"
     if connected is False:
         return "offline"
-    return "active"
+    return None
 
 
 def _coord(value) -> float | None:
@@ -95,7 +96,9 @@ def _device_kwargs(
     name = device_name(asset)
     if name is not None:
         kwargs["name"] = name
-    kwargs["status"] = _status_for(asset)
+    status = _status_for(asset)
+    if status is not None:
+        kwargs["status"] = status
     if location is not None:
         kwargs["location"] = location
 

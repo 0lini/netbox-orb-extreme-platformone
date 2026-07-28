@@ -13,10 +13,10 @@ EXTREME_RESERVED_VLAN_VID_MAX = 4094
 # catalogs so the sets cannot drift.
 PORT_ENTITY_TABLE_KEYS = frozenset(PORT_TABLES) | frozenset(INTERFACE_ID_TABLES)
 
-# NetBox requires Interface.type. When ConfigState has no verified
-# speed/connector mapping (or the row is an SVI / stub LAG member), use the
-# same ``other`` fallback as AP radios / Cisco Meraki.
-DEFAULT_INTERFACE_TYPE = "other"
+# NetBox requires Interface.type on create. SVI / orphan IP stubs use
+# ``virtual``; LAG parents use ``lag``. Physical ports and AP radios assert
+# type only from a verified speed/connector or radio_mode map — never invent
+# ``other``.
 VIRTUAL_INTERFACE_TYPE = "virtual"
 
 # ConfigState reports oper_speed / connector_type as integer codes with no

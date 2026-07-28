@@ -42,7 +42,8 @@ def ports_to_entities(
     IPAddress entities assigned to the matching interface. VLAN membership
     refs use `vid` plus `name=str(vid)` (NetBox requires a name;
     switch-local names are not site-scoped). Physical ports without a
-    verified connector map default to type `other`; SVI stubs use `virtual`.
+    verified connector map omit `type` (do not invent `other`); SVI stubs use
+    `virtual`.
 
     Nested Interface ``device`` refs include site/role/device_type when
     known — Diode rejects name-only Device stubs during generate-diff.

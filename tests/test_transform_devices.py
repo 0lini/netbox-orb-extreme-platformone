@@ -216,12 +216,12 @@ def test_devices_to_entities_disconnected_device_is_offline(stub_sdk):
     assert entities[-1]._kw["device"]._kw["status"] == "offline"
 
 
-def test_devices_to_entities_defaults_status_active_when_is_connected_unknown(stub_sdk):
+def test_devices_to_entities_omits_status_when_is_connected_unknown(stub_sdk):
     asset = {**SWITCH_ASSET}
     del asset["is_connected"]
     entities = transform.devices_to_entities([_record(asset=asset)])
 
-    assert entities[-1]._kw["device"]._kw["status"] == "active"
+    assert "status" not in entities[-1]._kw["device"]._kw
 
 
 def test_devices_to_entities_without_any_site_skips_the_device(stub_sdk, caplog):

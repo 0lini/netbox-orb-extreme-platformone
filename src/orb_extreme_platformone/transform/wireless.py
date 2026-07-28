@@ -12,7 +12,6 @@ from .common import _coerce_int, _device_ref, _interface_identity_kwargs, _norma
 from .port_join import _by_key, _first_row
 from .wireless_auth import _ensure_wlan, _wlan_kwargs
 from .wireless_rf import (
-    DEFAULT_RADIO_TYPE,
     _channel_frequency_mhz,
     _channel_width_mhz,
     _is_wireless_interface_type,
@@ -76,14 +75,11 @@ def _radio_interface_kwargs(
         enabled=config.get("enabled"),
     )
     # radio_mode exists only on AssetWirelessInterfaceState, not config.
-    # Assert type only when a state row is present: known mode → ieee802.11*;
-    # unknown/missing mode on a state row → ``other``. Config-only (no state)
-    # omits type so a wireless-state degrade cannot overwrite a prior type.
+    # Assert type only for a known ieee802.11* mode. Missing/unknown mode
+    # omits type — do not invent ``other`` (and RF/WLAN links stay gated off).
     radio_type = _radio_type(state.get("radio_mode"))
     if radio_type is not None:
         kwargs["type"] = radio_type
-    elif state:
-        kwargs["type"] = DEFAULT_RADIO_TYPE
     wireless = _is_wireless_interface_type(kwargs.get("type"))
     if wireless:
         kwargs["rf_role"] = "ap"

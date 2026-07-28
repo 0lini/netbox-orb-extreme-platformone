@@ -4,10 +4,6 @@ from __future__ import annotations
 
 from .common import _coerce_int, _compact_token
 
-# NetBox requires Interface.type. When radio_mode is missing, match ports /
-# Meraki AP radios and fall back to ``other``.
-DEFAULT_RADIO_TYPE = "other"
-
 _RADIO_TYPE_BY_MODE = {
     "_11a": "ieee802.11a",
     "_11bg": "ieee802.11g",
