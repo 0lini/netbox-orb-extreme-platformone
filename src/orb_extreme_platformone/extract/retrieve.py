@@ -115,7 +115,7 @@ def retrieve_ok(
 
 def extract_device_table_buckets(
     client: PlatformOneClient,
-    device_ids: list[str],
+    cs_device_ids: list[str],
     catalog: TableCatalog,
     *,
     policy_name: str,
@@ -128,18 +128,21 @@ def extract_device_table_buckets(
     list per catalog key; successful rows append into the matching bucket.
     Rows are keyed by the catalog's GetRequest filter field
     (``asset_device_id`` or ``device_id``) — no cross-field fallback.
+
+    ``cs_device_ids`` are ConfigState AssetDevice UUIDs, not Assets device ids;
+    see the glossary in docs/naming-conventions.md.
     """
     failures = failed_tables if failed_tables is not None else []
     tables_by_device: dict[str, dict[str, list[dict]]] = {
-        device_id: {key: [] for key in catalog} for device_id in device_ids
+        device_id: {table_key: [] for table_key in catalog} for device_id in cs_device_ids
     }
-    if not device_ids or not catalog:
+    if not cs_device_ids or not catalog:
         return tables_by_device, failures
 
     # Preserve catalog order for deterministic retrieve_ok contexts.
     catalog_items = list(catalog.items())
-    jobs = [(table, {filter_field: device_ids}) for _, (table, filter_field) in catalog_items]
-    for (key, (_, filter_field)), rows in retrieve_ok(
+    jobs = [(table, {filter_field: cs_device_ids}) for _, (table, filter_field) in catalog_items]
+    for (table_key, (_, filter_field)), rows in retrieve_ok(
         client,
         jobs,
         catalog_items,
@@ -150,5 +153,5 @@ def extract_device_table_buckets(
         for row in rows:
             device_id = str(row.get(filter_field) or "")
             if device_id in tables_by_device:
-                tables_by_device[device_id][key].append(row)
+                tables_by_device[device_id][table_key].append(row)
     return tables_by_device, failures

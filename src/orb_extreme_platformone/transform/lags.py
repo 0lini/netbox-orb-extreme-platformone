@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+from typing import NamedTuple
+
 from netboxlabs.diode.sdk.ingester import Device, Entity, Interface
 
 from .common import _coerce_bool, _normalized_mac, logger
 from .ips import _ip_entities_for_interface
 from .physical_ports import _iface_base_kwargs
 from .port_constants import LAG_INTERFACE_TYPE
-from .port_join import _by_key, _first_row, _optional_first_row
+from .port_join import _first_row, _group_by_interface_id, _optional_first_row
 from .vlans import _vlan_fields, _vlan_records_for
 
 
@@ -70,16 +72,31 @@ def _record_membership(membership: dict[str, str], *, member: str, lag: str) -> 
 LagRow = tuple[str, dict, dict]
 
 
+class LagResult(NamedTuple):
+    """LAG entities plus the join bookkeeping physical-port mapping needs.
+
+    Named because positions 2/3 are both ``set[str]`` and 4/5 are both
+    ``dict[str, str]``: transposing either pair type-checks cleanly and
+    silently corrupts LAG membership.
+    """
+
+    entities: list[Entity]
+    lag_names: set[str]
+    lag_interface_ids: set[str]
+    membership: dict[str, str]
+    emitted_keys: dict[str, str]
+
+
 def _joined_lag_rows(configs: list[dict], states: list[dict]) -> list[LagRow]:
-    configs_by_key = _by_key(configs)
-    states_by_key = _by_key(states)
+    configs_by_id = _group_by_interface_id(configs)
+    states_by_id = _group_by_interface_id(states)
     return [
         (
-            key,
-            _first_row(configs_by_key, key, table="lag_configs"),
-            _first_row(states_by_key, key, table="lag_states"),
+            interface_id,
+            _first_row(configs_by_id, interface_id, table="lag_configs"),
+            _first_row(states_by_id, interface_id, table="lag_states"),
         )
-        for key in sorted(set(configs_by_key) | set(states_by_key))
+        for interface_id in sorted(set(configs_by_id) | set(states_by_id))
     ]
 
 
@@ -91,7 +108,7 @@ def _lag_membership(joined_rows: list[LagRow]) -> dict[str, str]:
     ``name`` may appear on either side of the same ``asset_interface_id``.
     """
     membership: dict[str, str] = {}
-    for _key, config, state in joined_rows:
+    for _interface_id, config, state in joined_rows:
         lag = _lag_name(config, state)
         if not lag:
             continue
@@ -169,7 +186,7 @@ def _lag_entities(
     interface_ips: dict[str, list[dict]],
     port_configs: dict[str, list[dict]] | None = None,
     port_states: dict[str, list[dict]] | None = None,
-) -> tuple[list[Entity], set[str], set[str], dict[str, str], dict[str, str]]:
+) -> LagResult:
     """Emit LAG parent interfaces. Returns entities plus join bookkeeping."""
     joined_rows = _joined_lag_rows(lag_configs, lag_states)
     port_configs = port_configs or {}
@@ -184,33 +201,32 @@ def _lag_entities(
     entities: list[Entity] = []
     emitted_keys: dict[str, str] = {}
 
-    for key, config, state in joined_rows:
+    for interface_id, config, state in joined_rows:
         name = _lag_name(config, state)
         if not name:
             continue
         lag_names.add(name)
-        # `key` is asset_interface_id (required on lag config/state).
         kwargs = _lag_kwargs(
             device=device,
             name=name,
-            interface_id=key,
+            interface_id=interface_id,
             config=config,
-            vlan_records=_vlan_records_for(vlans, interface_id=key),
-            poe_state=_optional_first_row(poe_states, key, table="poe_states"),
-            poe_config=_optional_first_row(poe_configs, key, table="poe_configs"),
-            port_config=_optional_first_row(port_configs, key, table="port_configs"),
-            port_state=_optional_first_row(port_states, key, table="port_states"),
+            vlan_records=_vlan_records_for(vlans, interface_id=interface_id),
+            poe_state=_optional_first_row(poe_states, interface_id, table="poe_states"),
+            poe_config=_optional_first_row(poe_configs, interface_id, table="poe_configs"),
+            port_config=_optional_first_row(port_configs, interface_id, table="port_configs"),
+            port_state=_optional_first_row(port_states, interface_id, table="port_states"),
         )
         entities.append(Entity(interface=Interface(**kwargs)))
-        emitted_keys[key] = name
-        lag_interface_ids.add(key)
+        emitted_keys[interface_id] = name
+        lag_interface_ids.add(interface_id)
         entities.extend(
             _ip_entities_for_interface(
                 device=device,
                 interface_name=name,
-                rows=interface_ips.get(key, []),
+                rows=interface_ips.get(interface_id, []),
                 interface_type=LAG_INTERFACE_TYPE,
             ),
         )
 
-    return entities, lag_names, lag_interface_ids, membership, emitted_keys
+    return LagResult(entities, lag_names, lag_interface_ids, membership, emitted_keys)

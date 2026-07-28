@@ -154,7 +154,7 @@ def test_radios_to_entities_warns_on_duplicate_wireless_config(stub_sdk, caplog)
 
     radio = next(e._kw["interface"]._kw for e in entities if "interface" in e._kw)
     assert radio["enabled"] is True
-    assert "Multiple wireless_interfaces rows share join key" in caplog.text
+    assert "Multiple wireless_interfaces rows share asset_interface_id" in caplog.text
 
 
 def test_radios_to_entities_uses_first_nonempty_state_for_rf(stub_sdk) -> None:

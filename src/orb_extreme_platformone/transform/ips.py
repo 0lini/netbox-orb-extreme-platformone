@@ -3,10 +3,14 @@
 from __future__ import annotations
 
 import ipaddress
+from typing import TYPE_CHECKING
 
 from netboxlabs.diode.sdk.ingester import Entity, Interface, IPAddress
 
 from .common import PROVENANCE_TAGS, _explicit_cidr, _interface_identity_kwargs
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 from .port_constants import VIRTUAL_INTERFACE_TYPE
 
 _IPV4_VERSION = 4
@@ -23,9 +27,9 @@ def _mgmt_interface_ids(tables: dict[str, list[dict]]) -> set[str]:
         return set()
     ids: set[str] = set()
     for row in (*(tables.get("port_configs") or []), *(tables.get("port_states") or [])):
-        key = (str(row.get("asset_device_id") or ""), str(row.get("name") or ""))
+        port_key = (str(row.get("asset_device_id") or ""), str(row.get("name") or ""))
         interface_id = str(row.get("asset_interface_id") or "")
-        if interface_id and key in mgmt_ports:
+        if interface_id and port_key in mgmt_ports:
             ids.add(interface_id)
     return ids
 
@@ -42,8 +46,12 @@ def _pick_primary_cidr(candidates: list[tuple[int, str]]) -> dict[str, str]:
 _CidrRow = tuple[dict, str, ipaddress.IPv4Interface | ipaddress.IPv6Interface]
 
 
-def _ranked_ip_matches(rows: list[_CidrRow], predicate) -> list[tuple[int, str]]:
-    return [(iface.version, cidr) for row, cidr, iface in rows if predicate(row, iface)]
+def _ranked_ip_matches(
+    rows: list[_CidrRow],
+    matches: Callable[[dict, ipaddress.IPv4Interface | ipaddress.IPv6Interface], bool],
+) -> list[tuple[int, str]]:
+    """Rank rows that satisfy ``matches``, keeping input order."""
+    return [(iface.version, cidr) for row, cidr, iface in rows if matches(row, iface)]
 
 
 def primary_ips_from_tables(
@@ -165,10 +173,10 @@ def _orphan_ip_entities(
     """
     entities: list[Entity] = []
     emitted_names: set[str] = set()
-    for key, rows in sorted(interface_ips.items()):
-        if key in emitted_keys:
+    for interface_id, rows in sorted(interface_ips.items()):
+        if interface_id in emitted_keys:
             continue
-        name = interface_names.get(key)
+        name = interface_names.get(interface_id)
         if not name:
             continue
         if name not in emitted_names:
@@ -179,7 +187,7 @@ def _orphan_ip_entities(
                             **_interface_identity_kwargs(
                                 device=device,
                                 name=name,
-                                interface_id=key or None,
+                                interface_id=interface_id or None,
                             ),
                             "type": VIRTUAL_INTERFACE_TYPE,
                         },
@@ -205,8 +213,8 @@ def _interface_names_by_id(tables: dict[str, list[dict]]) -> dict[str, str]:
     non-empty name wins so later tables do not rename an already-known id.
     """
     names: dict[str, str] = {}
-    for key in ("port_configs", "port_states", "lag_configs", "lag_states"):
-        for row in tables.get(key) or []:
+    for table_key in ("port_configs", "port_states", "lag_configs", "lag_states"):
+        for row in tables.get(table_key) or []:
             interface_id = str(row.get("asset_interface_id") or "")
             name = str(row.get("name") or "").strip()
             if interface_id and name:

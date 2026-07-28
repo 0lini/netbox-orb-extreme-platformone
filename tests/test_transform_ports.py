@@ -21,7 +21,7 @@ def test_ports_to_entities_warns_on_duplicate_first_row_join(stub_sdk, caplog) -
     )
 
     assert entities[0]._kw["interface"]._kw["enabled"] is True
-    assert "Multiple port_configs rows share join key" in caplog.text
+    assert "Multiple port_configs rows share asset_interface_id" in caplog.text
 
 
 def test_ports_to_entities_maps_config_state_and_vlans_onto_one_interface(stub_sdk) -> None:

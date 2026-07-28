@@ -9,7 +9,7 @@ from netboxlabs.diode.sdk.ingester import Device, Entity, Interface, WirelessLAN
 from orb_extreme_platformone.catalog import WIRELESS_TABLES
 
 from .common import _coerce_int, _device_ref, _interface_identity_kwargs, _normalized_mac
-from .port_join import _by_key, _first_row
+from .port_join import _first_row, _group_by_interface_id
 from .wireless_auth import _ensure_wlan, _wlan_kwargs
 from .wireless_rf import (
     _channel_frequency_mhz,
@@ -152,7 +152,7 @@ def radios_to_entities(
         ssid_states = tables.get("ssid_states") or []
 
         radios: dict[str, dict] = {}
-        configs_by_key = _by_key(configs)
+        configs_by_key = _group_by_interface_id(configs)
         for key in configs_by_key:
             radios.setdefault(key, {"config": {}, "states": []})["config"] = _first_row(
                 configs_by_key,

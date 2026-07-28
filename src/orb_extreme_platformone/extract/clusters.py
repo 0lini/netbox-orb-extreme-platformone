@@ -11,7 +11,7 @@ from .tables import CLUSTER_MEMBER_FILTERS
 logger = get_logger(__name__)
 
 
-def extract_inferred_clusters(client: PlatformOneClient, asset_device_ids: list[str]) -> list[dict]:
+def extract_inferred_clusters(client: PlatformOneClient, cs_device_ids: list[str]) -> list[dict]:
     """Fetch InferredCluster rows for the given AssetDevice UUIDs.
 
     Filtering `retrieve-inferred-cluster` by AssetDevice UUIDs silently
@@ -24,11 +24,11 @@ def extract_inferred_clusters(client: PlatformOneClient, asset_device_ids: list[
     ``device_two_id`` still keeps rows from ``device_one_id`` (and vice versa)
     so a one-sided blip does not drop VirtualChassis for the whole tick.
     """
-    if not asset_device_ids:
+    if not cs_device_ids:
         return []
 
     inferred_to_asset: dict[str, str] = {}
-    for device in client.retrieve("inferred-device", {"asset_device_id": asset_device_ids}):
+    for device in client.retrieve("inferred-device", {"asset_device_id": cs_device_ids}):
         inferred_id = str(device.get("id") or "")
         asset_id = str(device.get("asset_device_id") or "")
         if inferred_id and asset_id:

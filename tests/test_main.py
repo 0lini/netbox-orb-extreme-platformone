@@ -15,7 +15,7 @@ from orb_extreme_platformone.__main__ import _env_bool, _quote_values, main
 
 from .backend_helpers import (
     _mock_assets,
-    _mock_cs,
+    _mock_configstate,
     _mock_empty_clusters,
     _mock_empty_port_and_lag_tables,
 )
@@ -27,8 +27,8 @@ def test_main_prints_one_json_object_per_entity(capsys, monkeypatch) -> None:
     monkeypatch.setenv("PLATFORMONE_API_TOKEN", "token")
     monkeypatch.delenv("BOOTSTRAP", raising=False)
     _mock_assets([SWITCH_ASSET])
-    _mock_cs("asset-device", "AssetDevice", [CS_SWITCH])
-    _mock_cs("asset-location", "AssetLocation", [])
+    _mock_configstate("asset-device", "AssetDevice", [CS_SWITCH])
+    _mock_configstate("asset-location", "AssetLocation", [])
     _mock_empty_port_and_lag_tables()
     _mock_empty_clusters()
 

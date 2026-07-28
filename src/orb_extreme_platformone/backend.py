@@ -14,7 +14,7 @@ from __future__ import annotations
 import os
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as pkg_version
-from typing import TYPE_CHECKING, overload
+from typing import TYPE_CHECKING, NamedTuple, overload
 
 from worker.backend import Backend as WorkerBackend
 from worker.models import Metadata, Policy
@@ -42,7 +42,7 @@ from .identity import asset_label, device_name, is_ap, is_switch, resolve_locati
 from .logging_context import get_logger, set_policy_name
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
+    from collections.abc import Callable, Iterable
 
     from netboxlabs.diode.sdk.ingester import Entity
 
@@ -90,16 +90,16 @@ def _log_failed_tables(policy_name: str, failed_tables: list[str], *, domain: st
     )
 
 
-def _cfg(config: object, key: str, default: object = None) -> object:
+def _policy_value(config: object, key: str, default: object = None) -> object:
     return getattr(config, key, default) if config is not None else default
 
 
 @overload
-def _cfg_or_env(config: object, key: str, *, env_key: str | None = ..., default: str) -> str: ...
+def _policy_or_env(config: object, key: str, *, env_key: str | None = ..., default: str) -> str: ...
 
 
 @overload
-def _cfg_or_env(
+def _policy_or_env(
     config: object,
     key: str,
     *,
@@ -108,7 +108,7 @@ def _cfg_or_env(
 ) -> str | None: ...
 
 
-def _cfg_or_env(
+def _policy_or_env(
     config: object,
     key: str,
     *,
@@ -121,19 +121,19 @@ def _cfg_or_env(
     key (the policy key is the documented ``agent.yaml`` contract, while the
     environment spelling is conventionally upper-case).
     """
-    value = _cfg(config, key, None)
+    value = _policy_value(config, key, None)
     if value is not None:
         return str(value)
     return os.environ.get(env_key or key, default)
 
 
-def _cfg_bool(config: object, key: str, *, default: bool = False) -> bool:
+def _policy_bool(config: object, key: str, *, default: bool = False) -> bool:
     """Resolve a boolean policy key, coercing environment strings.
 
     Environment values arrive as strings, so a bare truthiness test would read
     ``BOOTSTRAP=false`` as enabled.
     """
-    value = _cfg(config, key, None)
+    value = _policy_value(config, key, None)
     if isinstance(value, bool):
         return value
     raw = os.environ.get(key) if value is None else str(value)
@@ -142,13 +142,13 @@ def _cfg_bool(config: object, key: str, *, default: bool = False) -> bool:
     return raw.strip().casefold() in {"1", "true", "yes", "on"}
 
 
-def _enabled_domains(config) -> set[str]:
+def _enabled_domains(config: object) -> set[str]:
     """Discovery domains to run this tick; `disable_domains` opts phases out.
 
     Note the coupling: disabling ``ports`` also drops Device primary IPs and
     the ISIS/SPBM custom fields, because the port fan-out is what supplies them.
     """
-    raw = _cfg(config, "disable_domains", None)
+    raw = _policy_value(config, "disable_domains", None)
     if raw is None:
         return set(DISCOVERY_DOMAINS)
     if isinstance(raw, str):
@@ -168,7 +168,7 @@ def _enabled_domains(config) -> set[str]:
     return set(DISCOVERY_DOMAINS) - disabled
 
 
-def _scope_sites(scope) -> list[str] | None:
+def _scope_sites(scope: object) -> list[str] | None:
     """Return an explicit site allow-list, or None for all sites.
 
     Accepts ``sites: ["*"]``, missing/empty ``sites``, or a non-dict scope as
@@ -190,7 +190,7 @@ def _scope_sites(scope) -> list[str] | None:
     return cleaned or None
 
 
-def _records_by_cs_id(records: list[dict], *, predicate) -> dict[str, dict]:
+def _records_by_cs_id(records: list[dict], *, predicate: Callable[[dict], bool]) -> dict[str, dict]:
     """Index records by cs_device_id, keeping the first and warning on collisions.
 
     Port/radio/VC fan-out is keyed by ConfigState UUID; two Assets rows that
@@ -238,16 +238,25 @@ def _device_names(
     return names
 
 
+class FanoutContext(NamedTuple):
+    """Per-device indexes a ConfigState fan-out phase needs."""
+
+    records_by_cs_id: dict[str, dict]
+    cs_device_ids: list[str]
+    device_names: dict[str, str]
+    device_meta: dict[str, dict]
+
+
 def _fanout_context(
     records: list[dict],
     *,
-    predicate,
+    predicate: Callable[[dict], bool],
     policy_name: str,
     kind: str,
-) -> tuple[dict[str, dict], list[str], dict[str, str], dict[str, dict]]:
+) -> FanoutContext:
     """Common ConfigState fan-out indexes for per-device table extracts."""
     records_by_cs_id = _records_by_cs_id(records, predicate=predicate)
-    device_ids = sorted(records_by_cs_id)
+    cs_device_ids = sorted(records_by_cs_id)
     device_names = _device_names(records_by_cs_id, policy_name=policy_name, kind=kind)
     device_meta: dict[str, dict] = {}
     for device_id, record in records_by_cs_id.items():
@@ -259,12 +268,12 @@ def _fanout_context(
             "product_type": asset.get("product_type"),
             "asset_ip": asset.get("ip_address"),
         }
-    return records_by_cs_id, device_ids, device_names, device_meta
+    return FanoutContext(records_by_cs_id, cs_device_ids, device_names, device_meta)
 
 
-def _cfg_timeout(config) -> float:
+def _policy_timeout(config: object) -> float:
     """Per-request timeout in seconds; falls back to the transport default."""
-    raw = _cfg_or_env(config, "PLATFORMONE_TIMEOUT")
+    raw = _policy_or_env(config, "PLATFORMONE_TIMEOUT")
     if raw is None:
         return DEFAULT_TIMEOUT_SECONDS
     try:
@@ -286,13 +295,13 @@ def _cfg_timeout(config) -> float:
     return timeout
 
 
-def _build_client(config) -> PlatformOneClient:
+def _build_client(config: object) -> PlatformOneClient:
     return PlatformOneClient(
-        base_url=_cfg_or_env(config, "PLATFORMONE_API_URL", default=DEFAULT_BASE_URL),
-        api_token=_cfg_or_env(config, "PLATFORMONE_API_TOKEN"),
-        username=_cfg_or_env(config, "PLATFORMONE_USERNAME"),
-        password=_cfg_or_env(config, "PLATFORMONE_PASSWORD"),
-        timeout=_cfg_timeout(config),
+        base_url=_policy_or_env(config, "PLATFORMONE_API_URL", default=DEFAULT_BASE_URL),
+        api_token=_policy_or_env(config, "PLATFORMONE_API_TOKEN"),
+        username=_policy_or_env(config, "PLATFORMONE_USERNAME"),
+        password=_policy_or_env(config, "PLATFORMONE_PASSWORD"),
+        timeout=_policy_timeout(config),
     )
 
 
@@ -328,11 +337,11 @@ class Backend(WorkerBackend):
     def _run(self, policy_name: str, policy: Policy) -> list[Entity]:
         config = policy.config
 
-        if _cfg_bool(config, "BOOTSTRAP"):
+        if _policy_bool(config, "BOOTSTRAP"):
             self._bootstrap(config, policy_name)
 
         client = _build_client(config)
-        classification = _cfg_or_env(
+        classification = _policy_or_env(
             config,
             "classification",
             env_key="PLATFORMONE_CLASSIFICATION",
@@ -402,15 +411,15 @@ class Backend(WorkerBackend):
         return entities
 
     @staticmethod
-    def _bootstrap(config, policy_name: str) -> None:
+    def _bootstrap(config: object, policy_name: str) -> None:
         """Create the NetBox custom fields and provenance tags, or fail closed.
 
         Failing closed is deliberate: syncing into a NetBox that lacks the
         ``platformone_*`` fields would silently drop provenance, so a bootstrap
         the operator explicitly asked for must not be skipped on error.
         """
-        netbox_url = _cfg_or_env(config, "NETBOX_API_URL")
-        netbox_token = _cfg_or_env(config, "NETBOX_API_TOKEN")
+        netbox_url = _policy_or_env(config, "NETBOX_API_URL")
+        netbox_token = _policy_or_env(config, "NETBOX_API_TOKEN")
         if not netbox_url or not netbox_token:
             msg = (
                 "BOOTSTRAP is enabled but NETBOX_API_URL / NETBOX_API_TOKEN "
@@ -440,12 +449,12 @@ class Backend(WorkerBackend):
         aborting the sync.
         """
         records_by_cs_id = _records_by_cs_id(records, predicate=lambda _record: True)
-        device_ids = sorted(records_by_cs_id)
-        if not device_ids:
+        cs_device_ids = sorted(records_by_cs_id)
+        if not cs_device_ids:
             return [], {}
 
         try:
-            clusters = extract_inferred_clusters(client, device_ids)
+            clusters = extract_inferred_clusters(client, cs_device_ids)
         except PlatformOneApiError as exc:
             # Diode upsert cannot clear virtual_chassis when omitted, so a failed
             # fetch leaves prior NetBox memberships sticky until a later success.
@@ -491,17 +500,17 @@ class Backend(WorkerBackend):
         Device primary IPs and ISIS/SPBM custom fields reuse the same switch
         fan-out.
         """
-        _switches, device_ids, device_names, device_meta = _fanout_context(
+        _switches, cs_device_ids, device_names, device_meta = _fanout_context(
             records,
             predicate=lambda record: is_switch(record["asset"].get("function")),
             policy_name=policy_name,
             kind="ports",
         )
-        if not device_ids:
+        if not cs_device_ids:
             return [], {}, {}
 
-        tables_by_device, failed_tables = extract_port_tables(client, device_ids, policy_name)
-        fabric_tables, fabric_failed = extract_fabric_tables(client, device_ids, policy_name)
+        tables_by_device, failed_tables = extract_port_tables(client, cs_device_ids, policy_name)
+        fabric_tables, fabric_failed = extract_fabric_tables(client, cs_device_ids, policy_name)
         failed_tables.extend(fabric_failed)
 
         fabric_by_cs_id: dict[str, dict] = {}
@@ -512,13 +521,13 @@ class Backend(WorkerBackend):
 
         entities: list[Entity] = []
         primary_ips_by_cs_id: dict[str, dict[str, str]] = {}
-        for device_id in device_ids:
-            tables = tables_by_device[device_id]
-            meta = device_meta[device_id]
+        for cs_device_id in cs_device_ids:
+            tables = tables_by_device[cs_device_id]
+            meta = device_meta[cs_device_id]
             primary = transform.primary_ips_from_tables(tables, asset_ip=meta.get("asset_ip"))
             if primary:
-                primary_ips_by_cs_id[device_id] = primary
-            name = device_names.get(device_id)
+                primary_ips_by_cs_id[cs_device_id] = primary
+            name = device_names.get(cs_device_id)
             if not name:
                 continue
             entities.extend(
@@ -543,16 +552,16 @@ class Backend(WorkerBackend):
     @staticmethod
     def _radio_entities(client: PlatformOneClient, records: list[dict], policy_name: str) -> list[Entity]:
         """Fetch wireless/SSID tables for in-scope APs and map to Diode entities."""
-        _aps, device_ids, device_names, device_meta = _fanout_context(
+        _aps, cs_device_ids, device_names, device_meta = _fanout_context(
             records,
             predicate=lambda record: is_ap(record["asset"].get("function")),
             policy_name=policy_name,
             kind="radios",
         )
-        if not device_ids:
+        if not cs_device_ids:
             return []
 
-        tables_by_device, failed_tables = extract_wireless_tables(client, device_ids, policy_name)
+        tables_by_device, failed_tables = extract_wireless_tables(client, cs_device_ids, policy_name)
         entities = transform.radios_to_entities(
             tables_by_device,
             device_names=device_names,

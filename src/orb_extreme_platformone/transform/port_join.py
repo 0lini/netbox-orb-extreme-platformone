@@ -9,44 +9,45 @@ from orb_extreme_platformone.identity import native_port_name
 from .common import logger
 
 
-def _record_key(record: dict) -> str:
+def _interface_id_of(record: dict) -> str:
     """Join key across ConfigState port tables: the row's asset_interface_id."""
     return str(record.get("asset_interface_id") or "")
 
 
-def _by_key(records: list[dict]) -> dict[str, list[dict]]:
+def _group_by_interface_id(records: list[dict]) -> dict[str, list[dict]]:
+    """Group rows by asset_interface_id, dropping rows that carry none."""
     grouped: dict[str, list[dict]] = defaultdict(list)
     for record in records:
-        key = _record_key(record)
-        if key:
-            grouped[key].append(record)
+        interface_id = _interface_id_of(record)
+        if interface_id:
+            grouped[interface_id].append(record)
     return grouped
 
 
-def _first_row(grouped: dict[str, list[dict]], key: str, *, table: str) -> dict:
+def _first_row(grouped: dict[str, list[dict]], interface_id: str, *, table: str) -> dict:
     """First row for a join key, or `{}` when the key is absent.
 
     Warns when multiple rows share the key: callers that take only the first
     row would otherwise silently drop siblings.
     """
-    rows = grouped.get(key)
+    rows = grouped.get(interface_id)
     if not rows:
         return {}
     if len(rows) > 1:
         logger.warning(
-            "Multiple %s rows share join key %r (%d rows); using the first",
+            "Multiple %s rows share asset_interface_id %r (%d rows); using the first",
             table,
-            key,
+            interface_id,
             len(rows),
         )
     return rows[0]
 
 
-def _optional_first_row(grouped: dict[str, list[dict]], key: str, *, table: str) -> dict | None:
-    """First row when the key is present, else None (distinguishes missing PoE)."""
-    if key not in grouped:
+def _optional_first_row(grouped: dict[str, list[dict]], interface_id: str, *, table: str) -> dict | None:
+    """First row when the id is present, else None (distinguishes missing PoE)."""
+    if interface_id not in grouped:
         return None
-    return _first_row(grouped, key, table=table)
+    return _first_row(grouped, interface_id, table=table)
 
 
 def _capabilities_by_port(records: list[dict]) -> dict[tuple[str, str], dict]:
@@ -57,22 +58,22 @@ def _capabilities_by_port(records: list[dict]) -> dict[tuple[str, str], dict]:
     the join key — same device scope other port tables get from backend
     bucketing / asset_interface_id.
     """
-    by_key: dict[tuple[str, str], dict] = {}
+    by_port: dict[tuple[str, str], dict] = {}
     for record in records:
         name = record.get("port_name")
         if not name:
             continue
         device_id = str(record.get("asset_device_id") or "")
-        key = (device_id, str(name))
-        if key in by_key:
+        port_key = (device_id, str(name))
+        if port_key in by_port:
             logger.warning(
                 "Multiple port_capabilities rows share port_name %r on device %r; using the first",
                 str(name),
                 device_id or "?",
             )
             continue
-        by_key[key] = record
-    return by_key
+        by_port[port_key] = record
+    return by_port
 
 
 # Row fields that carry a front-panel port name across the ConfigState port
@@ -100,4 +101,7 @@ def _native_port_name_tables(tables: dict[str, list[dict]], function: str | None
 
     Rows are copied (not mutated) so callers' table dicts stay untouched.
     """
-    return {key: [_native_port_name_row(row, function) for row in rows or []] for key, rows in tables.items()}
+    return {
+        table_key: [_native_port_name_row(row, function) for row in rows or []]
+        for table_key, rows in tables.items()
+    }

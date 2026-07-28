@@ -8,7 +8,7 @@ from orb_extreme_platformone.client import PlatformOneApiError, PlatformOneClien
 from orb_extreme_platformone.logging_context import get_logger
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
+    from collections.abc import Callable, Iterable
 
 logger = get_logger(__name__)
 
@@ -26,7 +26,12 @@ def extract_cs_devices(client: PlatformOneClient, assets: list[dict]) -> list[di
     return list(client.retrieve("asset-device", {"serial_number": serials}))
 
 
-def index_unique(items: Iterable[dict], key_fn, *, label: str) -> dict:
+def index_unique(
+    items: Iterable[dict],
+    key_fn: Callable[[dict], str | None],
+    *,
+    label: str,
+) -> dict:
     """Build {key: item}, keeping the first on collision and warning."""
     index: dict = {}
     for item in items:

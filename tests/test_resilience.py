@@ -18,7 +18,7 @@ from orb_extreme_platformone.logging_context import (
 
 from .backend_helpers import (
     _mock_assets,
-    _mock_cs,
+    _mock_configstate,
     _mock_empty_clusters,
     _mock_empty_port_and_lag_tables,
     _policy,
@@ -83,9 +83,9 @@ def test_results_are_in_submission_order() -> None:
 def test_auth_failure_aborts_the_tick(status: int, caplog) -> None:
     """Bad credentials fail every remaining table too; degrading 15 times is noise."""
     _mock_assets([SWITCH_ASSET])
-    _mock_cs("asset-device", "AssetDevice", [CS_SWITCH])
-    _mock_cs("asset-location", "AssetLocation", [])
-    _mock_cs("asset-port-config", "AssetPortConfig", [], status=status)
+    _mock_configstate("asset-device", "AssetDevice", [CS_SWITCH])
+    _mock_configstate("asset-location", "AssetLocation", [])
+    _mock_configstate("asset-port-config", "AssetPortConfig", [], status=status)
     _mock_empty_port_and_lag_tables()
     _mock_empty_clusters()
 
@@ -141,8 +141,8 @@ def test_policy_name_is_set_for_the_duration_of_a_tick(caplog) -> None:
             return True
 
     _mock_assets([SWITCH_ASSET])
-    _mock_cs("asset-device", "AssetDevice", [CS_SWITCH])
-    _mock_cs("asset-location", "AssetLocation", [])
+    _mock_configstate("asset-device", "AssetDevice", [CS_SWITCH])
+    _mock_configstate("asset-location", "AssetLocation", [])
     _mock_empty_port_and_lag_tables()
     _mock_empty_clusters()
 
@@ -177,8 +177,8 @@ def _domain_policy(disabled):
 @responses.activate
 def test_disabling_wireless_skips_its_configstate_calls() -> None:
     _mock_assets([SWITCH_ASSET])
-    _mock_cs("asset-device", "AssetDevice", [CS_SWITCH])
-    _mock_cs("asset-location", "AssetLocation", [])
+    _mock_configstate("asset-device", "AssetDevice", [CS_SWITCH])
+    _mock_configstate("asset-location", "AssetLocation", [])
     _mock_empty_port_and_lag_tables()
     _mock_empty_clusters()
 
@@ -190,8 +190,8 @@ def test_disabling_wireless_skips_its_configstate_calls() -> None:
 @responses.activate
 def test_disabling_ports_skips_port_and_fabric_calls() -> None:
     _mock_assets([SWITCH_ASSET])
-    _mock_cs("asset-device", "AssetDevice", [CS_SWITCH])
-    _mock_cs("asset-location", "AssetLocation", [])
+    _mock_configstate("asset-device", "AssetDevice", [CS_SWITCH])
+    _mock_configstate("asset-location", "AssetLocation", [])
     _mock_empty_clusters()
 
     entities = list(Backend().run("platformone_worker", _domain_policy(["ports"])))
@@ -205,8 +205,8 @@ def test_disabling_ports_skips_port_and_fabric_calls() -> None:
 @responses.activate
 def test_unknown_disable_domains_entries_warn_and_are_ignored(caplog) -> None:
     _mock_assets([SWITCH_ASSET])
-    _mock_cs("asset-device", "AssetDevice", [CS_SWITCH])
-    _mock_cs("asset-location", "AssetLocation", [])
+    _mock_configstate("asset-device", "AssetDevice", [CS_SWITCH])
+    _mock_configstate("asset-location", "AssetLocation", [])
     _mock_empty_port_and_lag_tables()
     _mock_empty_clusters()
 

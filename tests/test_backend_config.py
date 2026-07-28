@@ -59,7 +59,7 @@ def test_bootstrap_true_without_netbox_creds_fails_closed(monkeypatch) -> None:
         list(Backend().run("platformone_worker", policy))
 
 
-def test_cfg_or_env_prefers_explicit_empty_policy_value(monkeypatch) -> None:
+def test_policy_or_env_prefers_explicit_empty_policy_value(monkeypatch) -> None:
     """Empty policy string wins over environment (None alone falls through)."""
     from orb_extreme_platformone import backend as backend_mod
 
@@ -68,9 +68,9 @@ def test_cfg_or_env_prefers_explicit_empty_policy_value(monkeypatch) -> None:
     class _Cfg:
         PLATFORMONE_API_TOKEN = ""
 
-    assert backend_mod._cfg_or_env(_Cfg(), "PLATFORMONE_API_TOKEN") == ""
+    assert backend_mod._policy_or_env(_Cfg(), "PLATFORMONE_API_TOKEN") == ""
 
     class _Missing:
         pass
 
-    assert backend_mod._cfg_or_env(_Missing(), "PLATFORMONE_API_TOKEN") == "from-env"
+    assert backend_mod._policy_or_env(_Missing(), "PLATFORMONE_API_TOKEN") == "from-env"
