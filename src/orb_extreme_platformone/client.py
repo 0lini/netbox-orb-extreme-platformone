@@ -224,7 +224,8 @@ class PlatformOneClient:
                     msg,
                 )
             return payload
-        raise AssertionError("unreachable")  # pragma: no cover
+        msg = "unreachable"
+        raise AssertionError(msg)  # pragma: no cover
 
     def _paginate(
         self,
