@@ -26,18 +26,18 @@ def test_require_https_url_accepts_https_hosts(url) -> None:
 @pytest.mark.parametrize(
     "url",
     [
-        "http://localhost",
-        "http://localhost:8000",
-        "http://127.0.0.1:8000",
-        "http://[::1]:8000",
-        "http://netbox.local",
-        "http://netbox:8080",
-        " http://localhost:8000/ ",
+        "https://localhost",
+        "https://localhost:8000",
+        "https://127.0.0.1:8000",
+        "https://[::1]:8000",
+        "https://netbox.local",
+        "https://netbox:8080",
+        " https://localhost:8000/ ",
     ],
 )
-def test_require_https_url_accepts_http_for_local_dev_hosts(url) -> None:
+def test_require_https_url_accepts_https_for_local_hosts(url) -> None:
     cleaned = require_https_url(url, what="TEST_URL")
-    assert cleaned.startswith("http://")
+    assert cleaned.startswith("https://")
     assert not cleaned.endswith("/")
 
 
@@ -50,6 +50,12 @@ def test_require_https_url_accepts_http_for_local_dev_hosts(url) -> None:
         "http://metadata",
         "http://kubernetes",
         "ftp://netbox.example.com",
+        "http://localhost",
+        "http://localhost:8000",
+        "http://127.0.0.1:8000",
+        "http://[::1]:8000",
+        "http://netbox.local",
+        "http://netbox:8080",
         "https://",
         "not-a-url",
         "https://cloudapi.extremecloudiq.com@evil.com",

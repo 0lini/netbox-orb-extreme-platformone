@@ -26,19 +26,9 @@ def test_ensure_schema_rejects_non_https_remote_netbox_url() -> None:
         bootstrap.ensure_schema("http://netbox.example.com", "token")
 
 
-def test_ensure_schema_accepts_http_localhost_netbox_url(monkeypatch) -> None:
-    """Local stack uses http://localhost:8000; bootstrap must not reject it."""
-    seen: list[str] = []
-
-    def _fake_ensure_all(url, token, definitions) -> None:
-        seen.append(url)
-
-    monkeypatch.setattr(bootstrap, "_ensure_all", _fake_ensure_all)
-    bootstrap.ensure_schema("http://localhost:8000", "token")
-    assert seen == [
-        "http://localhost:8000/api/extras/custom-fields/",
-        "http://localhost:8000/api/extras/tags/",
-    ]
+def test_ensure_schema_rejects_http_localhost_netbox_url() -> None:
+    with pytest.raises(ValueError, match="https://"):
+        bootstrap.ensure_schema("http://localhost:8000", "token")
 
 
 @responses.activate

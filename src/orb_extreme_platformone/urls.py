@@ -2,40 +2,13 @@
 
 from __future__ import annotations
 
-import ipaddress
 from urllib.parse import urlparse
-
-# Plaintext http:// is only allowed for these hostnames (plus loopback IPs
-# and *.local). The Docker service hostname ``netbox`` is listed explicitly —
-# do not treat every single-label name as safe.
-_LOCAL_HTTP_HOSTS = frozenset({"localhost", "netbox"})
-
-
-def _is_local_dev_host(hostname: str | None) -> bool:
-    """True for loopback and explicitly allowlisted local-dev hostnames.
-
-    Allows plaintext ``http://`` only when tokens cannot leave the machine
-    (loopback, ``*.local`` mDNS, or a local Docker ``netbox`` hostname).
-    Public/remote hosts still require HTTPS.
-    """
-    if not hostname:
-        return False
-    host = hostname.strip().lower().rstrip(".")
-    if host in _LOCAL_HTTP_HOSTS or host.endswith(".local"):
-        return True
-    try:
-        return ipaddress.ip_address(host).is_loopback
-    except ValueError:
-        return False
 
 
 def require_https_url(url: str, *, what: str) -> str:
     """Return a cleaned base URL safe for sending API tokens.
 
-    Requires ``https://`` with a host for remote endpoints. Plaintext
-    ``http://`` is allowed only for local/dev hosts (see
-    :func:`_is_local_dev_host`) so NetBox bootstrap works against
-    ``http://localhost:8000`` and ``http://netbox:8080``.
+    Requires ``https://`` with a host.
 
     Rejects userinfo (``user:pass@host`` / ``legit@evil``) so credentials
     cannot be redirected to an attacker-controlled host via URL confusion.
@@ -43,8 +16,7 @@ def require_https_url(url: str, *, what: str) -> str:
     mounted under a subpath) and trailing slashes are stripped.
 
     Raises ``ValueError`` for empty, hostless, userinfo-bearing, or
-    non-local ``http://`` values so tokens are never sent to an
-    unencrypted remote endpoint.
+    non-https values so tokens are never sent to an unencrypted endpoint.
     """
     cleaned = (url or "").strip().rstrip("/")
     parsed = urlparse(cleaned)
@@ -64,7 +36,7 @@ def require_https_url(url: str, *, what: str) -> str:
         msg = f"{what} must be an https:// URL with a host"
         raise ValueError(msg)
 
-    if parsed.scheme == "https" or (parsed.scheme == "http" and _is_local_dev_host(hostname)):
+    if parsed.scheme == "https":
         return cleaned
     msg = f"{what} must be an https:// URL with a host"
     raise ValueError(msg)
