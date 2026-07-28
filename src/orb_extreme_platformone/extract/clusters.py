@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-import logging
-
 from orb_extreme_platformone.client import PlatformOneApiError, PlatformOneClient
+from orb_extreme_platformone.logging_context import get_logger
 
 from .retrieve import retrieve_parallel
 from .tables import CLUSTER_MEMBER_FILTERS
 
-logger = logging.getLogger("orb_extreme_platformone.extract")
+logger = get_logger(__name__)
 
 
 def extract_inferred_clusters(client: PlatformOneClient, asset_device_ids: list[str]) -> list[dict]:

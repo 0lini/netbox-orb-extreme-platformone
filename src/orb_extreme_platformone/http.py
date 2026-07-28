@@ -13,7 +13,6 @@ are reads despite the verb, and ``/login`` is idempotent in effect.
 
 from __future__ import annotations
 
-import logging
 import re
 import threading
 import time
@@ -22,6 +21,7 @@ import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
+from .logging_context import get_logger
 from .urls import require_https_url
 
 DEFAULT_BASE_URL = "https://cloudapi.extremecloudiq.com"
@@ -59,7 +59,7 @@ _HTTP_OK = 200
 _AUTH_FAILURE_STATUSES = (401, 403)
 _UNAUTHORIZED = 401
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class PlatformOneApiError(RuntimeError):

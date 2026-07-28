@@ -2,12 +2,17 @@
 
 Uses the NetBox REST API directly (not Diode) because field definitions are
 schema, not data. Skips gracefully if no NetBox credentials are configured.
+
+Failures surface as ``NetBoxApiError`` rather than a raw ``requests``
+exception, so the package presents one error taxonomy: this mirrors
+``PlatformOneApiError`` on the Platform ONE side.
 """
 
 from __future__ import annotations
 
 import requests
 
+from .http import truncate_error_body
 from .schema import (
     CF_CLUSTER_ID,
     CF_DEVICE_ID,
@@ -129,22 +134,49 @@ TAGS = [
 ]
 
 
+_HTTP_REDIRECT_MIN = 300
+_HTTP_CLIENT_ERROR_MIN = 400
+_REQUEST_TIMEOUT_SECONDS = 30
+_AUTH_FAILURE_STATUSES = (401, 403)
+
+
+class NetBoxApiError(RuntimeError):
+    """Raised on a failed NetBox REST call during schema bootstrap.
+
+    Mirrors ``PlatformOneApiError`` so callers handle one error shape across
+    both upstreams. ``status_code`` is ``None`` for transport failures.
+    """
+
+    def __init__(self, message: str, *, status_code: int | None = None) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+
+    @property
+    def is_auth_failure(self) -> bool:
+        """NetBox token is wrong or lacks permission — retrying will not help."""
+        return self.status_code in _AUTH_FAILURE_STATUSES
+
+
 def _headers(token: str) -> dict:
     return {"Authorization": f"Token {token}", "Content-Type": "application/json"}
 
 
-def _request(method: str, url: str, token: str, **kwargs):
+def _request(method: str, url: str, token: str, **kwargs) -> requests.Response:
     """NetBox REST call that never follows redirects (token must not leave origin)."""
-    kwargs.setdefault("timeout", 30)
+    kwargs.setdefault("timeout", _REQUEST_TIMEOUT_SECONDS)
     kwargs.setdefault("allow_redirects", False)
-    resp = requests.request(method, url, headers=_headers(token), **kwargs)
-    if 300 <= resp.status_code < 400:
+    try:
+        resp = requests.request(method, url, headers=_headers(token), **kwargs)
+    except requests.RequestException as exc:
+        msg = f"NetBox request failed for {url}: {exc}"
+        raise NetBoxApiError(msg) from exc
+    if _HTTP_REDIRECT_MIN <= resp.status_code < _HTTP_CLIENT_ERROR_MIN:
         msg = f"NetBox unexpected redirect {resp.status_code} for {url}"
-        raise requests.HTTPError(
-            msg,
-            response=resp,
-        )
-    resp.raise_for_status()
+        raise NetBoxApiError(msg, status_code=resp.status_code)
+    if resp.status_code >= _HTTP_CLIENT_ERROR_MIN:
+        detail = truncate_error_body(resp.text)
+        msg = f"NetBox API error {resp.status_code} for {url}: {detail}"
+        raise NetBoxApiError(msg, status_code=resp.status_code)
     return resp
 
 

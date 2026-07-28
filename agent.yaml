@@ -50,6 +50,11 @@ orb:
           PLATFORMONE_PASSWORD: ${PLATFORMONE_PASSWORD}
           # PLATFORMONE_API_TOKEN: ${PLATFORMONE_API_TOKEN}   # optional alternative
           # PLATFORMONE_API_URL: https://cloudapi.extremecloudiq.com   # default
+          # PLATFORMONE_TIMEOUT: 60          # per-request seconds (default 60).
+                                             # Transient failures (429/5xx and
+                                             # connection errors) retry 3x with
+                                             # exponential backoff before a table
+                                             # degrades for the tick.
 
           classification: ALL              # Assets device filter: ALL (default),
                                            # SWITCH, WIRELESS, ROUTER, ... Port sync

@@ -20,7 +20,6 @@ tests/test_openapi_contract.py.
 
 from __future__ import annotations
 
-import logging
 from typing import TYPE_CHECKING
 
 from .http import (
@@ -30,6 +29,7 @@ from .http import (
     PlatformOneTransport,
     truncate_error_body,
 )
+from .logging_context import get_logger
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
@@ -55,7 +55,7 @@ __all__ = [
     "truncate_error_body",
 ]
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def _coerce_page_count(value, *, default: int) -> int:

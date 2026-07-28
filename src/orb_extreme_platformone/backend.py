@@ -11,7 +11,6 @@ transform lives in `transform/`.
 
 from __future__ import annotations
 
-import logging
 import os
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as pkg_version
@@ -21,7 +20,12 @@ from worker.backend import Backend as WorkerBackend
 from worker.models import Metadata, Policy
 
 from . import bootstrap, transform
-from .client import DEFAULT_BASE_URL, PlatformOneApiError, PlatformOneClient
+from .client import (
+    DEFAULT_BASE_URL,
+    DEFAULT_TIMEOUT_SECONDS,
+    PlatformOneApiError,
+    PlatformOneClient,
+)
 from .extract import (
     CLUSTER_MEMBER_FILTERS,
     FABRIC_DEVICE_TABLES,
@@ -35,13 +39,14 @@ from .extract.fabric import extract_fabric_tables
 from .extract.ports import extract_port_tables
 from .extract.wireless import extract_wireless_tables
 from .identity import asset_label, device_name, is_ap, is_switch, resolve_location
+from .logging_context import get_logger, set_policy_name
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
     from netboxlabs.diode.sdk.ingester import Entity
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 APP_NAME = "netbox-orb-extreme-platformone"
 try:
@@ -227,12 +232,37 @@ def _fanout_context(
     return records_by_cs_id, device_ids, device_names, device_meta
 
 
+def _cfg_timeout(config) -> float:
+    """Per-request timeout in seconds; falls back to the transport default."""
+    raw = _cfg_or_env(config, "PLATFORMONE_TIMEOUT")
+    if raw is None:
+        return DEFAULT_TIMEOUT_SECONDS
+    try:
+        timeout = float(raw)
+    except (TypeError, ValueError):
+        logger.warning(
+            "Ignoring invalid PLATFORMONE_TIMEOUT %r; using %ss",
+            raw,
+            DEFAULT_TIMEOUT_SECONDS,
+        )
+        return DEFAULT_TIMEOUT_SECONDS
+    if timeout <= 0:
+        logger.warning(
+            "Ignoring non-positive PLATFORMONE_TIMEOUT %r; using %ss",
+            raw,
+            DEFAULT_TIMEOUT_SECONDS,
+        )
+        return DEFAULT_TIMEOUT_SECONDS
+    return timeout
+
+
 def _build_client(config) -> PlatformOneClient:
     return PlatformOneClient(
         base_url=_cfg_or_env(config, "PLATFORMONE_API_URL", default=DEFAULT_BASE_URL),
         api_token=_cfg_or_env(config, "PLATFORMONE_API_TOKEN"),
         username=_cfg_or_env(config, "PLATFORMONE_USERNAME"),
         password=_cfg_or_env(config, "PLATFORMONE_PASSWORD"),
+        timeout=_cfg_timeout(config),
     )
 
 
@@ -252,21 +282,24 @@ class Backend(WorkerBackend):
         )
 
     def run(self, policy_name: str, policy: Policy, **_kwargs) -> Iterable[Entity]:
+        """Produce the Diode entities for one policy tick.
+
+        Wraps ``_run`` so a tick that dies is recorded at ERROR with a
+        traceback: without it the package logged nothing above WARNING, and a
+        total failure was indistinguishable from routine table degradation.
+        """
+        set_policy_name(policy_name)
+        try:
+            return self._run(policy_name, policy)
+        except Exception:
+            logger.exception("Policy %s: tick failed and produced no entities", policy_name)
+            raise
+
+    def _run(self, policy_name: str, policy: Policy) -> list[Entity]:
         config = policy.config
 
         if _cfg_bool(config, "BOOTSTRAP"):
-            netbox_url = _cfg_or_env(config, "NETBOX_API_URL")
-            netbox_token = _cfg_or_env(config, "NETBOX_API_TOKEN")
-            if not netbox_url or not netbox_token:
-                msg = (
-                    "BOOTSTRAP is enabled but NETBOX_API_URL / NETBOX_API_TOKEN "
-                    "are missing; provide both or set BOOTSTRAP: false"
-                )
-                raise ValueError(
-                    msg,
-                )
-            logger.info("Policy %s: running bootstrap (custom fields + provenance tags)", policy_name)
-            bootstrap.ensure_schema(netbox_url, netbox_token)
+            self._bootstrap(config, policy_name)
 
         client = _build_client(config)
         classification = _cfg_or_env(
@@ -319,7 +352,41 @@ class Backend(WorkerBackend):
             transform.primary_ip_device_entities(scoped, primary_ips_by_cs_id=primary_ips_by_cs_id),
         )
 
+        client.close()
+        logger.info(
+            "Policy %s: tick complete; %d entities from %d in-scope device(s)",
+            policy_name,
+            len(entities),
+            len(scoped),
+        )
         return entities
+
+    @staticmethod
+    def _bootstrap(config, policy_name: str) -> None:
+        """Create the NetBox custom fields and provenance tags, or fail closed.
+
+        Failing closed is deliberate: syncing into a NetBox that lacks the
+        ``platformone_*`` fields would silently drop provenance, so a bootstrap
+        the operator explicitly asked for must not be skipped on error.
+        """
+        netbox_url = _cfg_or_env(config, "NETBOX_API_URL")
+        netbox_token = _cfg_or_env(config, "NETBOX_API_TOKEN")
+        if not netbox_url or not netbox_token:
+            msg = (
+                "BOOTSTRAP is enabled but NETBOX_API_URL / NETBOX_API_TOKEN "
+                "are missing; provide both or set BOOTSTRAP: false"
+            )
+            raise ValueError(msg)
+        logger.info("Policy %s: running bootstrap (custom fields + provenance tags)", policy_name)
+        try:
+            bootstrap.ensure_schema(netbox_url, netbox_token)
+        except bootstrap.NetBoxApiError as exc:
+            msg = (
+                f"Bootstrap failed against NetBox ({exc}); custom fields and tags may be "
+                "incomplete. Fix NetBox connectivity and re-run with BOOTSTRAP: true, "
+                "or set BOOTSTRAP: false to sync without schema setup."
+            )
+            raise RuntimeError(msg) from exc
 
     @staticmethod
     def _virtual_chassis_entities(
