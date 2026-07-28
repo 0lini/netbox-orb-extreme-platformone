@@ -35,15 +35,15 @@ Platform ONE (Assets + ConfigState)
 
 | Platform ONE source | NetBox objects |
 |---------------------|----------------|
-| Devices (Assets API) | `Device` — name (Assets `host_name` when present), serial, status (`active`/`offline`; unknown → `active`, Meraki-style), role (from Assets `function` when present; no static default), device type and manufacturer, platform (OS family + version), primary IPv4/IPv6 from ConfigState interface IPs (Assets `ip_address` is match-only), provenance tags, `platformone_device_id` custom field, plus fabric identity CFs when present (`platformone_isis_area`, `platformone_isis_system_id`, `platformone_spbm_nickname`) |
+| Devices (Assets API) | `Device` — name (Assets `host_name` when present), serial, status (`active`/`offline` when `is_connected` is known; omitted when unknown), role (from Assets `function` when present; no static default), device type and manufacturer, platform (OS family + version), primary IPv4/IPv6 from ConfigState interface IPs (Assets `ip_address` is match-only), provenance tags, `platformone_device_id` custom field, plus fabric identity CFs when present (`platformone_isis_area`, `platformone_isis_system_id`, `platformone_spbm_nickname`) |
 | Device locations (ConfigState) | `Site` (optional latitude/longitude) plus a nested `Location` chain (building → floor), falling back to the Assets API's flat site name |
-| Switch ports (ConfigState) | `Interface` — name, admin state (`enabled`), link state (`mark_connected`), speed/duplex (verified codes), `type` (verified codes else `other`), description, MAC (uppercase), `mgmt_only`, `poe_mode` / `poe_type`, untagged/tagged VLANs with 802.1Q `mode`, `platformone_interface_id` custom field |
+| Switch ports (ConfigState) | `Interface` — name, admin state (`enabled`), link state (`mark_connected`), speed/duplex (verified codes), `type` (verified speed/connector only; omitted when unknown — never invent `other`), description, MAC (uppercase), `mgmt_only`, `poe_mode` / `poe_type`, untagged/tagged VLANs with 802.1Q `mode`, `platformone_interface_id` custom field |
 | VLAN membership (ConfigState) | Interface `untagged_vlan` / `tagged_vlans` by `vid` with `name=str(vid)` (NetBox requires a name; switch-local names are not site-scoped, so VID is the stable placeholder; named VLAN sync via `retrieve-asset-vlan-config` is not used) |
 | Interface IP addresses (ConfigState) | `IPAddress` — address + `mask_length`, `status` `active`, assigned to the matching interface (bare addresses without a prefix are skipped; SVI/orphan IPs also emit a minimal Interface named from vlan/port/LAG rows) |
 | Link aggregation (ConfigState) | `Interface` — LAG parent (`type=lag`, name, admin `enabled` from duplicate port-config or default up, VLAN trunk/access, `poe_mode`/`poe_type` when joined, optional description/MAC from duplicate port rows, interface CFs); member ports use the same physical-port fields plus Diode `Interface.lag` |
 | Inferred clusters (ConfigState) | `VirtualChassis` — name from peer names, master = primary member (`device_one`), member `vc_position`, provenance tags, `platformone_cluster_id` custom field |
-| AP radios (ConfigState) | `Interface` — radio name, admin `enabled`, `type` (`ieee802.11*` when known including `ieee802.11be`; else `other` without RF/`wireless_lans`), `rf_role=ap` + `tx_power` / channel / `wireless_lans` only on wireless types, `primary_mac_address` (BSSID, uppercase), interface CFs |
-| SSIDs / WLANs (ConfigState) | `WirelessLAN` — `ssid`, `status` (`active`/`disabled`; unknown → `active`), `auth_type` / `auth_cipher` (unknown → `open` / `auto`, Meraki-style); deduped by SSID across APs (not site-scoped) |
+| AP radios (ConfigState) | `Interface` — radio name, admin `enabled`, `type` (`ieee802.11*` when `radio_mode` is known including `ieee802.11be`; omitted when unknown — never invent `other`), `rf_role=ap` + `tx_power` / channel / `wireless_lans` only on wireless types, `primary_mac_address` (BSSID, uppercase), interface CFs |
+| SSIDs / WLANs (ConfigState) | `WirelessLAN` — `ssid`, `status` (`active`/`disabled` when `enabled` is known; omitted when unknown), `auth_type` / `auth_cipher` when encryption maps cleanly (omitted when missing/unrecognized); deduped by SSID across APs (not site-scoped) |
 
 The worker asserts a **fixed field set**: each field is either always
 asserted when Platform ONE reports the underlying data, or never asserted at
@@ -232,7 +232,7 @@ export PLATFORMONE_PASSWORD=...             # or put both in .env (gitignored)
 uv run python -m orb_extreme_platformone    # dry run: extract → transform → print entities
 uv run pytest                               # offline test suite
 uv run ruff check . && uv run ruff format --check .
-uv run ty check                             # type check (Astral ty)
+uv run ty check --error-on-warning          # type check (Astral ty; warnings fail)
 ```
 
 The Orb Agent worker (`netboxlabs-orb-worker`) owns the Diode client and the
@@ -294,26 +294,24 @@ re-verify them when changing SDK versions:
 
 ### Device status
 
-Aligned with Cisco Meraki device-status mapping:
-
 | Assets `is_connected` | NetBox Device status |
 |-----------------------|----------------------|
 | `true` | `active` |
 | `false` | `offline` |
-| missing / unknown | `active` |
+| missing / unknown | omitted (do not invent `active`) |
 
 ### Wireless LAN status and auth
 
-Aligned with Cisco Meraki SSID mapping:
-
 | Assets / ConfigState | NetBox WirelessLAN |
 |----------------------|--------------------|
-| SSID `enabled` true / unknown | `status` `active` |
+| SSID `enabled` true | `status` `active` |
 | SSID `enabled` false | `status` `disabled` |
-| `encryption` open / unknown | `auth_type` `open`, `auth_cipher` `auto` |
+| SSID `enabled` missing / unknown | `status` omitted |
+| `encryption` open / OWE / none | `auth_type` `open`, `auth_cipher` `auto` |
 | `encryption` PSK / WPA / WPA-personal family | `auth_type` `wpa-personal`; cipher `tkip` for bare WPA, `aes` when WPA2+ |
 | `encryption` 802.1X / enterprise family | `auth_type` `wpa-enterprise` |
 | `encryption` WEP | `auth_type` `wep`, `auth_cipher` `wep` |
+| `encryption` missing / unrecognized | `auth_type` / `auth_cipher` omitted |
 
 ### Custom fields
 
@@ -470,9 +468,9 @@ transformed from ConfigState tables joined on `asset_interface_id`
   and `connector_type` have no OpenAPI value table; only codes confirmed
   against production hardware are mapped (`oper_speed 4` = 1 Gbit/s,
   `connector_type 1/2` = copper/fiber → `1000base-t` / `1000base-x-sfp`).
-  Unknown speed/connector codes leave speed unset but set Interface `type`
-  to `other`. When port-state is absent entirely, `type` is omitted so a
-  state-table degrade cannot overwrite a previously good type with `other`.
+  Unknown speed/connector codes leave both speed and `type` unset (never
+  invent `other`). When port-state is absent entirely, `type` is likewise
+  omitted so a state-table degrade cannot overwrite a previously good type.
   **Duplex** uses the verified Platform ONE enum on `oper_duplex` (1 = half,
   2 = full); when oper is unset, config `duplex` is the fallback (also 4 =
   auto). Config-side `speed` remains unverified and is not used. MACs are
@@ -482,7 +480,9 @@ transformed from ConfigState tables joined on `asset_interface_id`
 
 ConfigState `retrieve-asset-lag-config` / `retrieve-asset-lag-state` (batched
 by `asset_device_id`, same pattern as ports) map to NetBox LAG interfaces.
-Membership is taken from nested `member_ports` on **lag-config** rows only.
+Membership is taken from nested `member_ports` on lag-config rows when
+present, falling back to the same nested list on lag-state when config
+omits members.
 
 - **LAG parent** is an `Interface` with `type=lag`, name from Platform ONE
   `name` (switches auto-generate one; rows without a name are skipped — no
@@ -501,9 +501,9 @@ Membership is taken from nested `member_ports` on **lag-config** rows only.
   Port-table duplicates are not emitted as a second Interface.
 - **Members** set Diode `Interface.lag` to the parent LAG (by device + name)
   and otherwise use the full physical-port field set when port
-  config/state/capability/PoE/VLAN data exists. Membership comes from
-  lag-config `member_ports` only. Members with no port-config/state row are
-  not stubbed.
+  config/state/capability/PoE/VLAN data exists. Membership prefers
+  lag-config `member_ports`, then lag-state when config has none. Members
+  with no port-config/state row are not stubbed.
 - **Not mapped (LACP / MLT extras):** AssetLagConfig also reports verified
   enums for `mode` (0=UNSET, 1=STATIC, 2=LACP, 3=VLACP, 4=HEALTH_CHECK;
   Fabric Engine: STATIC/LACP/VLACP; Switch Engine: STATIC/LACP/HEALTH_CHECK)
@@ -535,17 +535,18 @@ switch-only). Tables used:
 Each radio becomes a NetBox `Interface` with native RF fields: `rf_role`
 always `"ap"` when `type` is an `ieee802.11*` wireless type, `enabled` from
 wireless-interface config, `type` from `radio_mode` (including
-`ieee802.11be` for Wi‑Fi 7; state present but unknown mode → `other`
-**without** RF / `wireless_lans`; config-only with no state omits `type` so
-a wireless-state degrade cannot invent `other`), `tx_power` from `power`,
+`ieee802.11be` for Wi‑Fi 7; missing/unknown mode omits `type` and does not
+invent `other`, so RF / `wireless_lans` stay gated off), `tx_power` from
+`power`,
 `primary_mac_address` from `bssid` (uppercase), `rf_channel_frequency` from
 IEEE channel formulas on `band` + `channel` (including string labels such as
 `BAND_5_GHZ`), and `rf_channel_width` when `channel_width` is already a
 standard MHz value (20/40/80/160/320). NetBox's `rf_channel` string is not
 asserted.
 
-SSIDs become `WirelessLAN` entities (`ssid`, `status`, `auth_type`,
-`auth_cipher` — see status/auth tables above). They are deduped by SSID name
+SSIDs become `WirelessLAN` entities (`ssid`, plus `status` /
+`auth_type` / `auth_cipher` when known — see status/auth tables above).
+They are deduped by SSID name
 across every AP and are **not** site-scoped (same SSID can broadcast in many
 sites). Across APs, `enabled` is OR'd (active if any AP broadcasts the SSID)
 and conflicting `encryption` values keep the first with a warning. Radios

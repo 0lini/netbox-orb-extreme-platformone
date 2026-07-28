@@ -5,14 +5,15 @@ from __future__ import annotations
 from .common import PROVENANCE_TAGS, _compact_token, logger
 
 
-def _auth_from_encryption(encryption: str | None) -> tuple[str, str]:
+def _auth_from_encryption(encryption: str | None) -> tuple[str, str] | None:
     """Map AssetSsidState.encryption to NetBox WirelessLAN auth_type + auth_cipher.
 
-    Unknown / empty values default to ``open`` / ``auto`` (Cisco Meraki posture).
-    Bare ``WPA`` / ``TYPE_WPA`` count as personal (not open).
+    Missing or unrecognized encryption asserts nothing — do not invent
+    ``open`` / ``auto``. Bare ``WPA`` / ``TYPE_WPA`` count as personal.
+    Explicit OPEN/OWE/none map to open/auto.
     """
     if not encryption or not str(encryption).strip():
-        return "open", "auto"
+        return None
     compact = _compact_token(encryption)
     if compact in {"open", "enhancedopen", "none", "owe"} or compact.startswith("open"):
         return "open", "auto"
@@ -25,7 +26,7 @@ def _auth_from_encryption(encryption: str | None) -> tuple[str, str]:
     ) or compact in {"typewpa", "wpaeap"}:
         auth_type = "wpa-personal"
     else:
-        auth_type = "open"
+        return None
 
     if "tkip" in compact or compact in {"wpa", "wpaeap", "typewpa"}:
         auth_cipher = "tkip"
@@ -36,22 +37,27 @@ def _auth_from_encryption(encryption: str | None) -> tuple[str, str]:
     return auth_type, auth_cipher
 
 
-def _wlan_status(enabled) -> str:
-    """Map SSID enabled → WirelessLAN status; unknown defaults to active."""
+def _wlan_status(enabled) -> str | None:
+    """Map SSID enabled → WirelessLAN status when known; omit when unknown."""
+    if enabled is True:
+        return "active"
     if enabled is False:
         return "disabled"
-    return "active"
+    return None
 
 
 def _wlan_kwargs(ssid: str, *, enabled, encryption: str | None) -> dict:
-    auth_type, auth_cipher = _auth_from_encryption(encryption)
-    return {
+    kwargs: dict = {
         "ssid": ssid,
-        "status": _wlan_status(enabled),
-        "auth_type": auth_type,
-        "auth_cipher": auth_cipher,
         "tags": PROVENANCE_TAGS,
     }
+    status = _wlan_status(enabled)
+    if status is not None:
+        kwargs["status"] = status
+    auth = _auth_from_encryption(encryption)
+    if auth is not None:
+        kwargs["auth_type"], kwargs["auth_cipher"] = auth
+    return kwargs
 
 
 def _ensure_wlan(

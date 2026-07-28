@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from netboxlabs.diode.sdk.ingester import Entity
+from typing import TYPE_CHECKING
 
 from orb_extreme_platformone.identity import SLASH_PORT_FUNCTIONS
 
@@ -12,6 +12,9 @@ from .lags import _lag_entities
 from .physical_ports import _physical_port_entities
 from .port_constants import PORT_ENTITY_TABLE_KEYS
 from .port_join import _by_key, _capabilities_by_port, _native_port_name_tables
+
+if TYPE_CHECKING:
+    from netboxlabs.diode.sdk.ingester import Entity
 
 __all__ = [
     "PORT_ENTITY_TABLE_KEYS",
@@ -36,12 +39,14 @@ def ports_to_entities(
     rows. Physical ports are the union of config+state rows joined on
     asset_interface_id. LAG interfaces come from lag
     config/state (type `lag`); member ports get Diode `Interface.lag`
-    pointing at the parent LAG (membership from lag-config only; members
-    without a port row are not stubbed). Interface IP rows become Diode
+    pointing at the parent LAG (membership from lag-config, falling back to
+    lag-state `member_ports` when config omits them; members without a port
+    row are not stubbed). Interface IP rows become Diode
     IPAddress entities assigned to the matching interface. VLAN membership
     refs use `vid` plus `name=str(vid)` (NetBox requires a name;
     switch-local names are not site-scoped). Physical ports without a
-    verified connector map default to type `other`; SVI stubs use `virtual`.
+    verified connector map omit `type` (do not invent `other`); SVI stubs use
+    `virtual`.
 
     Nested Interface ``device`` refs include site/role/device_type when
     known — Diode rejects name-only Device stubs during generate-diff.
@@ -104,6 +109,6 @@ def ports_to_entities(
             interface_ips=interface_ips,
             emitted_keys=emitted_keys,
             interface_names=_interface_names_by_id(tables),
-        )
+        ),
     )
     return entities

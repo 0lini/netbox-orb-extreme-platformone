@@ -52,22 +52,23 @@ def configstate_spec() -> dict:
     return _load_spec("PLATFORMONE_CONFIGSTATE_SPEC")
 
 
-def test_assets_devices_endpoint_and_params_still_exist(assets_spec):
+def test_assets_devices_endpoint_and_params_still_exist(assets_spec) -> None:
     post = assets_spec["paths"]["/devices"]["post"]
     param_names = set()
     for param in post.get("parameters", []):
+        resolved = param
         if "$ref" in param:
-            param = assets_spec["components"]["parameters"][param["$ref"].rsplit("/", 1)[-1]]
-        param_names.add(param["name"])
+            resolved = assets_spec["components"]["parameters"][param["$ref"].rsplit("/", 1)[-1]]
+        param_names.add(resolved["name"])
     assert {"page", "limit"} <= param_names
 
 
-def test_assets_filter_still_supports_classification(assets_spec):
+def test_assets_filter_still_supports_classification(assets_spec) -> None:
     schemas = assets_spec["components"]["schemas"]
     assert "classification" in schemas["ListDevicesRequestFilter"]["properties"]
 
 
-def test_configstate_tables_client_uses_still_exist(configstate_spec):
+def test_configstate_tables_client_uses_still_exist(configstate_spec) -> None:
     paths = configstate_spec["paths"]
     used_tables = [
         "asset-device",
@@ -82,9 +83,10 @@ def test_configstate_tables_client_uses_still_exist(configstate_spec):
         assert f"/retrieve-{table}" in paths, f"retrieve-{table} disappeared from ConfigState"
 
 
-def test_configstate_response_keys_and_filter_fields_match(configstate_spec):
+def test_configstate_response_keys_and_filter_fields_match(configstate_spec) -> None:
     """The response key must equal the schema name the spec wraps records in,
-    and the batching filter field must exist on the table's GetRequest."""
+    and the batching filter field must exist on the table's GetRequest.
+    """
     schemas = configstate_spec["components"]["schemas"]
     for table, filter_field in [
         ("asset-device", None),
@@ -103,7 +105,7 @@ def test_configstate_response_keys_and_filter_fields_match(configstate_spec):
             assert filter_field in request_schema, f"{key}GetRequest lost filter field {filter_field}"
 
 
-def test_asset_lag_schema_fields_still_exist(configstate_spec):
+def test_asset_lag_schema_fields_still_exist(configstate_spec) -> None:
     """LAG sync depends on name/enabled/member_ports on config and names on members.
 
     LACP extras (`mode`, `lacp_key`, `load_balance_algo`, `dynamic`) are
@@ -133,7 +135,7 @@ def test_asset_lag_schema_fields_still_exist(configstate_spec):
     assert "interface_name" in schemas["AssetLagStateMemberPort"]["properties"]
 
 
-def test_inferred_cluster_member_filters_still_exist(configstate_spec):
+def test_inferred_cluster_member_filters_still_exist(configstate_spec) -> None:
     """VirtualChassis batching filters on both member sides of InferredCluster.
 
     Those member IDs are InferredDevice UUIDs (schema: "User device"), joined
@@ -150,7 +152,7 @@ def test_inferred_cluster_member_filters_still_exist(configstate_spec):
     assert "id" in inferred_device
 
 
-def test_configstate_pagination_params_still_exist(configstate_spec):
+def test_configstate_pagination_params_still_exist(configstate_spec) -> None:
     post = configstate_spec["paths"]["/retrieve-asset-device"]["post"]
     names = {p.get("name") for p in post.get("parameters", [])}
     assert {"page_number", "page_size"} <= names

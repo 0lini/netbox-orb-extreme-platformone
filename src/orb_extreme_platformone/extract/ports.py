@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
-from orb_extreme_platformone.client import PlatformOneClient
+from typing import TYPE_CHECKING
 
 from .retrieve import extract_device_table_buckets, retrieve_ok
 from .tables import INTERFACE_ID_TABLES, PORT_TABLES
+
+if TYPE_CHECKING:
+    from orb_extreme_platformone.client import PlatformOneClient
 
 # Capabilities have no asset_interface_id; derive the rest from PORT_TABLES so
 # a new interface-id-bearing table cannot be forgotten here.
@@ -78,7 +81,8 @@ def extract_port_tables(
     Returns ``(tables_by_device, failed_tables)``. Independent device-filtered
     tables retrieve concurrently; interface-IP tables run afterward once
     ``asset_interface_id`` values are known. LAG membership comes from
-    nested ``member_ports`` on lag-config rows.
+    nested ``member_ports`` on lag-config rows, falling back to lag-state
+    when config omits members.
     """
     tables_by_device, failed_tables = extract_device_table_buckets(
         client,

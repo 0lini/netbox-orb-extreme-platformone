@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Iterable
+from typing import TYPE_CHECKING
 
 from orb_extreme_platformone.client import PlatformOneApiError, PlatformOneClient
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
 
 logger = logging.getLogger("orb_extreme_platformone.extract")
 
@@ -112,6 +115,6 @@ def correlated_records(client: PlatformOneClient, assets: list[dict], policy_nam
                 "cs_device_id": cs_device_id,
                 "cs_device": cs,
                 "location": locations.get(cs_device_id) if cs_device_id else None,
-            }
+            },
         )
     return records

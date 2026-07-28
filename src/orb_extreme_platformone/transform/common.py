@@ -13,9 +13,8 @@ from netboxlabs.diode.sdk.ingester import (
     Site,
 )
 
+from orb_extreme_platformone import bootstrap
 from orb_extreme_platformone.identity import device_type_model_for, role_for
-
-from .. import bootstrap
 
 logger = logging.getLogger("orb_extreme_platformone.transform")
 

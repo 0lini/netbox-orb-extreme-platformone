@@ -15,7 +15,7 @@ def _cs_url(table: str) -> str:
     return f"{DEFAULT_BASE_URL}/configstate/v1/retrieve-{table}"
 
 
-def _mock_assets(devices: list[dict]):
+def _mock_assets(devices: list[dict]) -> None:
     responses.add(
         responses.POST,
         ASSETS_URL,
@@ -24,18 +24,19 @@ def _mock_assets(devices: list[dict]):
     )
 
 
-def _mock_cs(table: str, key: str, records: list[dict], status: int = 200):
+def _mock_cs(table: str, key: str, records: list[dict], status: int = 200) -> None:
     body = {key: records, "Pagination": {"total_pages": 1}} if status == 200 else {"error": "boom"}
     responses.add(responses.POST, _cs_url(table), json=body, status=status)
 
 
-def _mock_empty_clusters():
+def _mock_empty_clusters() -> None:
     """Existing port-focused tests do not care about VC; no InferredDevice rows
-    means the backend skips retrieve-inferred-cluster entirely."""
+    means the backend skips retrieve-inferred-cluster entirely.
+    """
     _mock_cs("inferred-device", "InferredDevice", [])
 
 
-def _mock_empty_port_and_lag_tables(*, include_fabric: bool = True):
+def _mock_empty_port_and_lag_tables(*, include_fabric: bool = True) -> None:
     """Empty mocks for every PORT_TABLES entry so adding a table cannot drift.
 
     Set ``include_fabric=False`` when a test supplies its own fabric rows
@@ -47,19 +48,19 @@ def _mock_empty_port_and_lag_tables(*, include_fabric: bool = True):
         _mock_empty_fabric_tables()
 
 
-def _mock_empty_fabric_tables():
+def _mock_empty_fabric_tables() -> None:
     """Empty mocks for ISIS/SPBM fabric identity tables."""
     for table, _ in FABRIC_DEVICE_TABLES.values():
         _mock_cs(table, configstate_response_key(table), [])
 
 
-def _mock_interface_id_tables_empty():
+def _mock_interface_id_tables_empty() -> None:
     """Empty mocks for interface-IP (fetched when interface UUIDs exist)."""
     for table, _ in INTERFACE_ID_TABLES.values():
         _mock_cs(table, configstate_response_key(table), [])
 
 
-def _mock_port_tables_empty():
+def _mock_port_tables_empty() -> None:
     _mock_empty_port_and_lag_tables()
     _mock_empty_clusters()
 

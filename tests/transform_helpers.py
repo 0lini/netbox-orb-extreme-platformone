@@ -50,7 +50,7 @@ def _wireless_tables(
                 "asset_interface_id": interface_id,
                 "name": name,
                 **state,
-            }
+            },
         )
     return {
         device_id: {
@@ -58,5 +58,5 @@ def _wireless_tables(
             "wireless_states": states,
             "ssid_configs": ssid_configs or [],
             "ssid_states": ssid_states or [],
-        }
+        },
     }

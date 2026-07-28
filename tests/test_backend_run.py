@@ -22,7 +22,7 @@ from tests.conftest import CS_SWITCH, SWITCH_ASSET
 
 
 @responses.activate
-def test_run_produces_site_location_device_and_interface_entities():
+def test_run_produces_site_location_device_and_interface_entities() -> None:
     _mock_assets([SWITCH_ASSET])
     _mock_cs("asset-device", "AssetDevice", [CS_SWITCH])
     _mock_cs(
@@ -34,7 +34,7 @@ def test_run_produces_site_location_device_and_interface_entities():
                 "site_name": "HQ",
                 "building_name": "B1",
                 "floor_name": "F2",
-            }
+            },
         ],
     )
     _mock_cs(
@@ -47,7 +47,7 @@ def test_run_produces_site_location_device_and_interface_entities():
                 "name": "1/1",
                 "enabled": True,
                 "description": "uplink",
-            }
+            },
         ],
     )
     _mock_cs(
@@ -62,7 +62,7 @@ def test_run_produces_site_location_device_and_interface_entities():
                 "oper_speed": 4,
                 "oper_duplex": 2,
                 "connector_type": 1,
-            }
+            },
         ],
     )
     _mock_cs(
@@ -75,7 +75,7 @@ def test_run_produces_site_location_device_and_interface_entities():
                 "interface_name": "1/1",
                 "port_vlan": 10,
                 "vlans": [{"vlan_number": 10}, {"vlan_number": 20}],
-            }
+            },
         ],
     )
     _mock_cs("asset-lag-config", "AssetLagConfig", [])
@@ -113,7 +113,7 @@ def test_run_produces_site_location_device_and_interface_entities():
 
 
 @responses.activate
-def test_run_attaches_isis_and_spbm_device_custom_fields():
+def test_run_attaches_isis_and_spbm_device_custom_fields() -> None:
     _mock_assets([SWITCH_ASSET])
     _mock_cs("asset-device", "AssetDevice", [CS_SWITCH])
     _mock_cs("asset-location", "AssetLocation", [{"asset_device_id": "cs-uuid-42", "site_name": "HQ"}])
@@ -126,7 +126,7 @@ def test_run_attaches_isis_and_spbm_device_custom_fields():
                 "asset_device_id": "cs-uuid-42",
                 "manual_area_address": "00.0001.0000.00",
                 "sys_id": "0010.0a0b.0c0d.00",
-            }
+            },
         ],
     )
     _mock_cs("asset-isis-global-state", "AssetIsisGlobalState", [])
@@ -148,7 +148,7 @@ def test_run_attaches_isis_and_spbm_device_custom_fields():
 
 
 @responses.activate
-def test_run_sets_device_primary_ip_from_configstate_interface_cidr():
+def test_run_sets_device_primary_ip_from_configstate_interface_cidr() -> None:
     """Bare Assets management IP must not become /32; use ConfigState mask."""
     _mock_assets([SWITCH_ASSET])
     _mock_cs("asset-device", "AssetDevice", [CS_SWITCH])
@@ -162,7 +162,7 @@ def test_run_sets_device_primary_ip_from_configstate_interface_cidr():
                 "asset_interface_id": "if-1",
                 "name": "1/1",
                 "enabled": True,
-            }
+            },
         ],
     )
     _mock_cs("asset-port-state", "AssetPortState", [])
@@ -180,7 +180,7 @@ def test_run_sets_device_primary_ip_from_configstate_interface_cidr():
                 "address": "10.0.0.2",
                 "mask_length": 24,
                 "is_primary": True,
-            }
+            },
         ],
     )
     _mock_empty_fabric_tables()
@@ -198,7 +198,7 @@ def test_run_sets_device_primary_ip_from_configstate_interface_cidr():
 
 
 @responses.activate
-def test_run_batches_every_switch_into_one_call_per_port_table():
+def test_run_batches_every_switch_into_one_call_per_port_table() -> None:
     switch2 = {**SWITCH_ASSET, "device_id": 43, "host_name": "sw-idf2", "serial_number": "SN43"}
     cs2 = {"id": "cs-uuid-43", "serial_number": "SN43"}
     _mock_assets([SWITCH_ASSET, switch2])
@@ -226,10 +226,11 @@ def test_run_batches_every_switch_into_one_call_per_port_table():
 
 
 @responses.activate
-def test_run_serial_less_configstate_record_stays_uncorrelated():
+def test_run_serial_less_configstate_record_stays_uncorrelated() -> None:
     """Serial number is the primary key between the two APIs -- there is
     deliberately no MAC/IP fallback. A ConfigState record without one never
-    correlates; the device still syncs Assets-only."""
+    correlates; the device still syncs Assets-only.
+    """
     cs = {"id": "cs-uuid-42", "base_mac_address": "AA:BB:CC:DD:EE:FF"}
     _mock_assets([SWITCH_ASSET])
     _mock_cs("asset-device", "AssetDevice", [cs])
@@ -242,10 +243,11 @@ def test_run_serial_less_configstate_record_stays_uncorrelated():
 
 
 @responses.activate
-def test_run_out_of_scope_devices_get_no_port_calls_and_no_entities():
+def test_run_out_of_scope_devices_get_no_port_calls_and_no_entities() -> None:
     """Scope regression: an out-of-scope switch must not leak back in as
     Interface entities via the port fan-out (Diode would re-create its
-    Device through implicit reference handling)."""
+    Device through implicit reference handling).
+    """
     branch_switch = {**SWITCH_ASSET, "device_id": 43, "host_name": "sw-branch", "serial_number": "SN43"}
     cs2 = {"id": "cs-uuid-43", "serial_number": "SN43"}
     _mock_assets([SWITCH_ASSET, branch_switch])
@@ -276,7 +278,7 @@ def test_run_out_of_scope_devices_get_no_port_calls_and_no_entities():
 
 
 @responses.activate
-def test_run_survives_a_failed_port_table_and_keeps_the_rest(caplog):
+def test_run_survives_a_failed_port_table_and_keeps_the_rest(caplog) -> None:
     """One failing ConfigState table (here port-state) degrades that table's
     fields for the tick; ports still map from port-config.
 
@@ -312,7 +314,7 @@ def test_run_survives_a_failed_port_table_and_keeps_the_rest(caplog):
     assert not any("/retrieve-asset-vlan-config" in c.request.url for c in responses.calls)
 
 
-def test_correlate_warns_on_duplicate_serial(caplog):
+def test_correlate_warns_on_duplicate_serial(caplog) -> None:
     from orb_extreme_platformone.extract import correlate
 
     assets = [{"device_id": 1, "serial_number": "SN1"}]
@@ -326,7 +328,7 @@ def test_correlate_warns_on_duplicate_serial(caplog):
     assert "Duplicate ConfigState AssetDevice serial_number" in caplog.text
 
 
-def test_correlate_preserves_string_device_ids():
+def test_correlate_preserves_string_device_ids() -> None:
     """Assets device_id may arrive as a JSON string; lookup must still work."""
     from orb_extreme_platformone.extract.correlate import correlate
 
@@ -339,7 +341,7 @@ def test_correlate_preserves_string_device_ids():
 
 
 @responses.activate
-def test_run_maps_inferred_cluster_to_virtual_chassis():
+def test_run_maps_inferred_cluster_to_virtual_chassis() -> None:
     switch2 = {**SWITCH_ASSET, "device_id": 43, "host_name": "sw-idf2", "serial_number": "SN43"}
     cs2 = {"id": "cs-uuid-43", "serial_number": "SN43"}
     _mock_assets([SWITCH_ASSET, switch2])
@@ -403,7 +405,7 @@ def test_run_maps_inferred_cluster_to_virtual_chassis():
 
 
 @responses.activate
-def test_run_maps_lag_interfaces_and_member_lag_refs():
+def test_run_maps_lag_interfaces_and_member_lag_refs() -> None:
     _mock_assets([SWITCH_ASSET])
     _mock_cs("asset-device", "AssetDevice", [CS_SWITCH])
     _mock_cs("asset-location", "AssetLocation", [])
@@ -432,7 +434,7 @@ def test_run_maps_lag_interfaces_and_member_lag_refs():
                     {"asset_lag_config_id": "lag-cfg-1", "interface_name": "1/1"},
                     {"asset_lag_config_id": "lag-cfg-1", "interface_name": "1/2"},
                 ],
-            }
+            },
         ],
     )
     _mock_cs("asset-lag-state", "AssetLagState", [])
@@ -456,7 +458,7 @@ def test_run_maps_lag_interfaces_and_member_lag_refs():
 
 
 @responses.activate
-def test_run_survives_a_failed_inferred_cluster_fetch():
+def test_run_survives_a_failed_inferred_cluster_fetch() -> None:
     _mock_assets([SWITCH_ASSET])
     _mock_cs("asset-device", "AssetDevice", [CS_SWITCH])
     _mock_cs("asset-location", "AssetLocation", [])
@@ -473,7 +475,7 @@ def test_run_survives_a_failed_inferred_cluster_fetch():
 
 
 @responses.activate
-def test_run_keeps_virtual_chassis_when_one_cluster_filter_fails(caplog):
+def test_run_keeps_virtual_chassis_when_one_cluster_filter_fails(caplog) -> None:
     """One member-side inferred-cluster filter can fail without dropping VC."""
     switch2 = {**SWITCH_ASSET, "device_id": 43, "host_name": "sw-idf2", "serial_number": "SN43"}
     cs2 = {"id": "cs-uuid-43", "serial_number": "SN43"}
@@ -509,9 +511,10 @@ def test_run_keeps_virtual_chassis_when_one_cluster_filter_fails(caplog):
 
 
 @responses.activate
-def test_run_survives_a_configstate_outage_with_assets_only_data():
+def test_run_survives_a_configstate_outage_with_assets_only_data() -> None:
     """ConfigState down entirely: devices still sync from Assets (flat site,
-    no ports), the tick does not fail."""
+    no ports), the tick does not fail.
+    """
     _mock_assets([SWITCH_ASSET])
     _mock_cs("asset-device", "AssetDevice", [], status=500)
 
@@ -524,9 +527,10 @@ def test_run_survives_a_configstate_outage_with_assets_only_data():
 
 
 @responses.activate
-def test_run_uncorrelated_device_syncs_without_ports():
+def test_run_uncorrelated_device_syncs_without_ports() -> None:
     """A device Assets knows but ConfigState doesn't (not collected yet)
-    still becomes a Device entity -- just with no ports or building/floor."""
+    still becomes a Device entity -- just with no ports or building/floor.
+    """
     _mock_assets([SWITCH_ASSET])
     _mock_cs("asset-device", "AssetDevice", [{"id": "cs-other", "serial_number": "OTHER"}])
     _mock_cs("asset-location", "AssetLocation", [])
@@ -542,7 +546,7 @@ def test_run_uncorrelated_device_syncs_without_ports():
 
 
 @responses.activate
-def test_run_maps_ap_radios_and_wlans():
+def test_run_maps_ap_radios_and_wlans() -> None:
     ap_asset = {
         "device_id": 99,
         "host_name": "ap-lobby",
@@ -575,7 +579,7 @@ def test_run_maps_ap_radios_and_wlans():
                 "asset_interface_id": "radio-1",
                 "name": "wifi0",
                 "enabled": True,
-            }
+            },
         ],
     )
     _mock_cs(
@@ -592,7 +596,7 @@ def test_run_maps_ap_radios_and_wlans():
                 "bssid": "aa:bb:cc:dd:ee:01",
                 "power": 15,
                 "radio_mode": "_11ax_5g",
-            }
+            },
         ],
     )
     _mock_cs(
@@ -630,7 +634,7 @@ def test_run_maps_ap_radios_and_wlans():
 
 
 @responses.activate
-def test_run_site_scope_matches_case_insensitively():
+def test_run_site_scope_matches_case_insensitively() -> None:
     _mock_assets([SWITCH_ASSET])
     _mock_cs("asset-device", "AssetDevice", [CS_SWITCH])
     _mock_cs(

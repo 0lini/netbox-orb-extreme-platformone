@@ -61,11 +61,11 @@ VLAN_PROPERTIES = {
 class Rec:
     """Records constructor kwargs so tests can assert on them without the real protobuf SDK."""
 
-    def __init__(self, **kw):
+    def __init__(self, **kw) -> None:
         self.__dict__.update(kw)
         self._kw = kw
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"{type(self).__name__}({self._kw})"
 
 

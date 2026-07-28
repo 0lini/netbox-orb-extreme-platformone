@@ -37,9 +37,11 @@ jobs:
           python-version: "3.14"
 
       - run: uv sync --locked --group dev
-      - run: uv run ty check
+      # error-on-warning is also set in [tool.ty.terminal]; pass explicitly for CI clarity.
+      - run: uv run ty check --error-on-warning
 
   test:
+    needs: lint
     runs-on: ubuntu-latest
     timeout-minutes: 15
     strategy:
@@ -55,9 +57,13 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - run: uv sync --locked --group dev
-      - run: uv run pytest -v --cov --cov-report=term-missing
+      - run: >-
+          uv run pytest -v
+          --cov --cov-report=term-missing --cov-fail-under=90
+          --strict-markers --strict-config
 
   package:
+    needs: [lint, test]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:

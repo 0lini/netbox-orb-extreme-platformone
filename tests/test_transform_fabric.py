@@ -7,7 +7,7 @@ from orb_extreme_platformone.transform.fabric import device_fabric_custom_fields
 from tests.conftest import cf
 
 
-def test_device_fabric_custom_fields_maps_area_sys_id_and_nickname(stub_sdk):
+def test_device_fabric_custom_fields_maps_area_sys_id_and_nickname(stub_sdk) -> None:
     fields = device_fabric_custom_fields(
         {
             "isis_global_configs": [
@@ -16,56 +16,56 @@ def test_device_fabric_custom_fields_maps_area_sys_id_and_nickname(stub_sdk):
                     "area_name": "home",
                     "sys_id": "0010.0a0b.0c0d.00",
                     "area_vnode_nickname": "0.01.02",
-                }
+                },
             ],
             "isis_global_states": [],
             "spbm_instances": [{"node_nick_name": "0.aa.bb", "instance_id": 1}],
-        }
+        },
     )
     assert cf(fields[bootstrap.CF_ISIS_AREA]._kw) == "00.0001.0000.00"
     assert cf(fields[bootstrap.CF_ISIS_SYSTEM_ID]._kw) == "0010.0a0b.0c0d.00"
     assert cf(fields[bootstrap.CF_SPBM_NICKNAME]._kw) == "0.aa.bb"
 
 
-def test_device_fabric_custom_fields_prefers_manual_area_over_name(stub_sdk):
+def test_device_fabric_custom_fields_prefers_manual_area_over_name(stub_sdk) -> None:
     fields = device_fabric_custom_fields(
         {
             "isis_global_configs": [{"area_name": "home", "manual_area_address": ""}],
             "isis_global_states": [{"default_area_address": "00.0002.0000.00"}],
             "spbm_instances": [],
-        }
+        },
     )
     assert cf(fields[bootstrap.CF_ISIS_AREA]._kw) == "home"
     assert bootstrap.CF_ISIS_SYSTEM_ID not in fields
     assert bootstrap.CF_SPBM_NICKNAME not in fields
 
 
-def test_device_fabric_custom_fields_falls_back_to_state_area_and_vnode_nick(stub_sdk):
+def test_device_fabric_custom_fields_falls_back_to_state_area_and_vnode_nick(stub_sdk) -> None:
     fields = device_fabric_custom_fields(
         {
             "isis_global_configs": [{"area_vnode_nickname": "0.11.22", "sys_id": "aabb.ccdd.eeff.00"}],
             "isis_global_states": [{"dynamically_learned_area": "00.00aa.0000.00"}],
             "spbm_instances": [],
-        }
+        },
     )
     assert cf(fields[bootstrap.CF_ISIS_AREA]._kw) == "00.00aa.0000.00"
     assert cf(fields[bootstrap.CF_ISIS_SYSTEM_ID]._kw) == "aabb.ccdd.eeff.00"
     assert cf(fields[bootstrap.CF_SPBM_NICKNAME]._kw) == "0.11.22"
 
 
-def test_device_fabric_custom_fields_empty_when_no_fabric_data(stub_sdk):
+def test_device_fabric_custom_fields_empty_when_no_fabric_data(stub_sdk) -> None:
     assert device_fabric_custom_fields({}) == {}
     assert device_fabric_custom_fields({"isis_global_configs": [{}], "spbm_instances": []}) == {}
 
 
-def test_devices_to_entities_attaches_fabric_custom_fields(stub_sdk):
+def test_devices_to_entities_attaches_fabric_custom_fields(stub_sdk) -> None:
     fabric = device_fabric_custom_fields(
         {
             "isis_global_configs": [
-                {"manual_area_address": "00.0001.0000.00", "sys_id": "0010.0a0b.0c0d.00"}
+                {"manual_area_address": "00.0001.0000.00", "sys_id": "0010.0a0b.0c0d.00"},
             ],
             "spbm_instances": [{"node_nick_name": "0.aa.bb"}],
-        }
+        },
     )
     entities = transform.devices_to_entities(
         [
@@ -81,7 +81,7 @@ def test_devices_to_entities_attaches_fabric_custom_fields(stub_sdk):
                 },
                 "cs_device_id": "cs-uuid-42",
                 "location": {"site_name": "HQ"},
-            }
+            },
         ],
         fabric_by_cs_id={"cs-uuid-42": fabric},
     )

@@ -7,7 +7,7 @@ import ipaddress
 from netboxlabs.diode.sdk.ingester import Entity, Interface, IPAddress
 
 from .common import PROVENANCE_TAGS, _explicit_cidr, _interface_identity_kwargs
-from .port_constants import DEFAULT_INTERFACE_TYPE, VIRTUAL_INTERFACE_TYPE
+from .port_constants import VIRTUAL_INTERFACE_TYPE
 
 
 def _mgmt_interface_ids(tables: dict[str, list[dict]]) -> set[str]:
@@ -116,7 +116,7 @@ def _ip_entities_for_interface(
     device: object,
     interface_name: str,
     rows: list[dict],
-    interface_type: str = DEFAULT_INTERFACE_TYPE,
+    interface_type: str | None = None,
 ) -> list[Entity]:
     entities: list[Entity] = []
     seen: set[str] = set()
@@ -125,19 +125,20 @@ def _ip_entities_for_interface(
         if not cidr or cidr in seen:
             continue
         seen.add(cidr)
+        # Mirror the parent Interface: omit type when unknown so an IP upsert
+        # cannot re-assert ``other`` over a good prior NetBox value.
+        iface_kwargs: dict = {"device": device, "name": interface_name}
+        if interface_type is not None:
+            iface_kwargs["type"] = interface_type
         entities.append(
             Entity(
                 ip_address=IPAddress(
                     address=cidr,
                     status="active",
-                    assigned_object_interface=Interface(
-                        device=device,
-                        name=interface_name,
-                        type=interface_type,
-                    ),
+                    assigned_object_interface=Interface(**iface_kwargs),
                     tags=PROVENANCE_TAGS,
-                )
-            )
+                ),
+            ),
         )
     return entities
 
@@ -179,9 +180,9 @@ def _orphan_ip_entities(
                                 interface_id=key or None,
                             ),
                             "type": VIRTUAL_INTERFACE_TYPE,
-                        }
-                    )
-                )
+                        },
+                    ),
+                ),
             )
             emitted_names.add(name)
         entities.extend(
@@ -190,7 +191,7 @@ def _orphan_ip_entities(
                 interface_name=name,
                 rows=rows,
                 interface_type=VIRTUAL_INTERFACE_TYPE,
-            )
+            ),
         )
     return entities
 

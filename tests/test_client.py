@@ -28,23 +28,23 @@ def _client() -> PlatformOneClient:
     return PlatformOneClient(api_token="tok")
 
 
-def test_client_requires_credentials():
+def test_client_requires_credentials() -> None:
     with pytest.raises(ValueError, match="api_token or username/password"):
         PlatformOneClient()
 
 
-def test_client_accepts_username_password_without_token():
+def test_client_accepts_username_password_without_token() -> None:
     client = PlatformOneClient(username="user", password="pass")
     assert client._token_expiry == 0.0
     assert "Authorization" not in client._headers
 
 
-def test_client_requires_https_base_url():
+def test_client_requires_https_base_url() -> None:
     with pytest.raises(ValueError, match="https://"):
         PlatformOneClient(base_url="http://cloudapi.extremecloudiq.com", api_token="tok")
 
 
-def test_truncate_error_body_collapses_and_limits_length():
+def test_truncate_error_body_collapses_and_limits_length() -> None:
     assert truncate_error_body("  a \n b  ") == "a b"
     long = "x" * 500
     truncated = truncate_error_body(long, limit=20)
@@ -63,13 +63,13 @@ def test_truncate_error_body_collapses_and_limits_length():
         ("asset-wireless-interface-state", "AssetWirelessInterfaceState"),
     ],
 )
-def test_configstate_response_key_matches_the_spec_schema_names(table, key):
+def test_configstate_response_key_matches_the_spec_schema_names(table, key) -> None:
     """PascalCase unwrap keys for tables this worker actually retrieves."""
     assert configstate_response_key(table) == key
 
 
 @responses.activate
-def test_get_devices_paginates_and_sends_the_classification_filter():
+def test_get_devices_paginates_and_sends_the_classification_filter() -> None:
     for page, data in [(1, [{"device_id": 1}]), (2, [{"device_id": 2}])]:
         responses.add(
             responses.POST,
@@ -88,7 +88,7 @@ def test_get_devices_paginates_and_sends_the_classification_filter():
 
 
 @responses.activate
-def test_get_devices_passes_a_custom_classification_through_verbatim():
+def test_get_devices_passes_a_custom_classification_through_verbatim() -> None:
     responses.add(
         responses.POST,
         ASSETS_URL,
@@ -101,7 +101,7 @@ def test_get_devices_passes_a_custom_classification_through_verbatim():
 
 
 @responses.activate
-def test_retrieve_paginates_and_unwraps_the_tables_response_key():
+def test_retrieve_paginates_and_unwraps_the_tables_response_key() -> None:
     url = f"{DEFAULT_BASE_URL}/configstate/v1/retrieve-asset-port-state"
     for page, records in [(1, [{"name": "1/1"}]), (2, [{"name": "1/2"}])]:
         responses.add(
@@ -122,7 +122,7 @@ def test_retrieve_paginates_and_unwraps_the_tables_response_key():
 
 
 @responses.activate
-def test_retrieve_sends_an_empty_filter_body_by_default():
+def test_retrieve_sends_an_empty_filter_body_by_default() -> None:
     responses.add(
         responses.POST,
         f"{DEFAULT_BASE_URL}/configstate/v1/retrieve-asset-device",
@@ -135,9 +135,10 @@ def test_retrieve_sends_an_empty_filter_body_by_default():
 
 
 @responses.activate
-def test_retrieve_tolerates_a_null_records_key():
+def test_retrieve_tolerates_a_null_records_key() -> None:
     """ConfigState marks the records array nullable in its spec -- an empty
-    table comes back as null, not []."""
+    table comes back as null, not [].
+    """
     responses.add(
         responses.POST,
         f"{DEFAULT_BASE_URL}/configstate/v1/retrieve-asset-port-config",
@@ -149,7 +150,7 @@ def test_retrieve_tolerates_a_null_records_key():
 
 
 @responses.activate
-def test_retrieve_chunks_large_filter_id_lists():
+def test_retrieve_chunks_large_filter_id_lists() -> None:
     """Oversized asset_device_id lists are split so gateways do not reject the body."""
     url = f"{DEFAULT_BASE_URL}/configstate/v1/retrieve-asset-port-state"
     ids = [f"id-{i}" for i in range(CONFIGSTATE_FILTER_CHUNK_SIZE + 3)]
@@ -177,7 +178,46 @@ def test_retrieve_chunks_large_filter_id_lists():
 
 
 @responses.activate
-def test_non_2xx_raises_platform_one_api_error():
+def test_retrieve_keeps_prior_chunk_rows_when_later_chunk_fails() -> None:
+    """A failed filter chunk must not discard rows already fetched from earlier chunks."""
+    url = f"{DEFAULT_BASE_URL}/configstate/v1/retrieve-asset-port-state"
+    ids = [f"id-{i}" for i in range(CONFIGSTATE_FILTER_CHUNK_SIZE + 3)]
+    chunk_a = ids[:CONFIGSTATE_FILTER_CHUNK_SIZE]
+    chunk_b = ids[CONFIGSTATE_FILTER_CHUNK_SIZE:]
+    responses.add(
+        responses.POST,
+        url,
+        match=[responses.matchers.json_params_matcher({"asset_device_id": chunk_a})],
+        json={"AssetPortState": [{"name": "a"}], "Pagination": {"total_pages": 1}},
+        status=200,
+    )
+    responses.add(
+        responses.POST,
+        url,
+        match=[responses.matchers.json_params_matcher({"asset_device_id": chunk_b})],
+        json={"error": "nope"},
+        status=500,
+    )
+
+    rows = list(_client().retrieve("asset-port-state", {"asset_device_id": ids}))
+
+    assert [r["name"] for r in rows] == ["a"]
+    assert len(responses.calls) == 2
+
+
+@responses.activate
+def test_retrieve_raises_when_every_filter_chunk_fails() -> None:
+    url = f"{DEFAULT_BASE_URL}/configstate/v1/retrieve-asset-port-state"
+    ids = [f"id-{i}" for i in range(CONFIGSTATE_FILTER_CHUNK_SIZE + 1)]
+    responses.add(responses.POST, url, json={"error": "nope"}, status=500)
+
+    with pytest.raises(PlatformOneApiError, match="500"):
+        list(_client().retrieve("asset-port-state", {"asset_device_id": ids}))
+    assert len(responses.calls) == 2
+
+
+@responses.activate
+def test_non_2xx_raises_platform_one_api_error() -> None:
     responses.add(responses.POST, ASSETS_URL, json={"error": "nope"}, status=403)
 
     with pytest.raises(PlatformOneApiError, match="403") as excinfo:
@@ -186,7 +226,7 @@ def test_non_2xx_raises_platform_one_api_error():
 
 
 @responses.activate
-def test_non_2xx_truncates_long_error_bodies():
+def test_non_2xx_truncates_long_error_bodies() -> None:
     responses.add(responses.POST, ASSETS_URL, body="e" * 1000, status=500)
 
     with pytest.raises(PlatformOneApiError) as excinfo:
@@ -201,7 +241,7 @@ LOGIN_URL = f"{DEFAULT_BASE_URL}/login"
 
 
 @responses.activate
-def test_username_password_logs_in_before_api_calls():
+def test_username_password_logs_in_before_api_calls() -> None:
     responses.add(
         responses.POST,
         LOGIN_URL,
@@ -224,7 +264,7 @@ def test_username_password_logs_in_before_api_calls():
 
 
 @responses.activate
-def test_username_password_relogs_in_once_on_401():
+def test_username_password_relogs_in_once_on_401() -> None:
     responses.add(
         responses.POST,
         LOGIN_URL,
@@ -252,7 +292,7 @@ def test_username_password_relogs_in_once_on_401():
 
 
 @responses.activate
-def test_login_failure_raises_platform_one_api_error():
+def test_login_failure_raises_platform_one_api_error() -> None:
     responses.add(responses.POST, LOGIN_URL, json={"error": "bad creds"}, status=401)
 
     client = PlatformOneClient(username="user", password="pass")
@@ -262,7 +302,7 @@ def test_login_failure_raises_platform_one_api_error():
 
 
 @responses.activate
-def test_static_api_token_does_not_call_login():
+def test_static_api_token_does_not_call_login() -> None:
     responses.add(
         responses.POST,
         ASSETS_URL,
@@ -276,7 +316,7 @@ def test_static_api_token_does_not_call_login():
 
 
 @responses.activate
-def test_transport_failure_raises_platform_one_api_error():
+def test_transport_failure_raises_platform_one_api_error() -> None:
     responses.add(
         responses.POST,
         ASSETS_URL,
@@ -288,7 +328,7 @@ def test_transport_failure_raises_platform_one_api_error():
 
 
 @responses.activate
-def test_invalid_json_raises_platform_one_api_error():
+def test_invalid_json_raises_platform_one_api_error() -> None:
     responses.add(responses.POST, ASSETS_URL, body="not-json", status=200)
 
     with pytest.raises(PlatformOneApiError, match="invalid JSON"):

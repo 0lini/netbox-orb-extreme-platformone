@@ -14,23 +14,23 @@ CF_URL = f"{NETBOX}/api/extras/custom-fields/"
 TAG_URL = f"{NETBOX}/api/extras/tags/"
 
 
-def test_ensure_schema_skips_gracefully_without_credentials():
+def test_ensure_schema_skips_gracefully_without_credentials() -> None:
     # No responses.activate: a real HTTP call would error loudly here.
     bootstrap.ensure_schema(None, None)
     bootstrap.ensure_schema(NETBOX, None)
     bootstrap.ensure_schema(None, "token")
 
 
-def test_ensure_schema_rejects_non_https_remote_netbox_url():
+def test_ensure_schema_rejects_non_https_remote_netbox_url() -> None:
     with pytest.raises(ValueError, match="https://"):
         bootstrap.ensure_schema("http://netbox.example.com", "token")
 
 
-def test_ensure_schema_accepts_http_localhost_netbox_url(monkeypatch):
+def test_ensure_schema_accepts_http_localhost_netbox_url(monkeypatch) -> None:
     """Local stack uses http://localhost:8000; bootstrap must not reject it."""
     seen: list[str] = []
 
-    def _fake_ensure_all(url, token, definitions):
+    def _fake_ensure_all(url, token, definitions) -> None:
         seen.append(url)
 
     monkeypatch.setattr(bootstrap, "_ensure_all", _fake_ensure_all)
@@ -42,7 +42,7 @@ def test_ensure_schema_accepts_http_localhost_netbox_url(monkeypatch):
 
 
 @responses.activate
-def test_ensure_schema_creates_missing_definitions():
+def test_ensure_schema_creates_missing_definitions() -> None:
     responses.add(responses.GET, CF_URL, json={"count": 0, "results": []}, status=200)
     responses.add(responses.POST, CF_URL, json={}, status=201)
     responses.add(responses.GET, TAG_URL, json={"count": 0, "results": []}, status=200)
@@ -73,7 +73,7 @@ def test_ensure_schema_creates_missing_definitions():
 
 
 @responses.activate
-def test_ensure_schema_is_idempotent_when_definitions_exist():
+def test_ensure_schema_is_idempotent_when_definitions_exist() -> None:
     for field in bootstrap.CUSTOM_FIELDS:
         responses.add(
             responses.GET,
@@ -90,10 +90,13 @@ def test_ensure_schema_is_idempotent_when_definitions_exist():
 
 
 @responses.activate
-def test_ensure_schema_patches_unique_onto_existing_fields():
+def test_ensure_schema_patches_unique_onto_existing_fields() -> None:
     """Fields created by a pre-uniqueness bootstrap must gain the flag."""
     responses.add(
-        responses.GET, CF_URL, json={"count": 1, "results": [{"id": 7, "unique": False}]}, status=200
+        responses.GET,
+        CF_URL,
+        json={"count": 1, "results": [{"id": 7, "unique": False}]},
+        status=200,
     )
     responses.add(responses.PATCH, f"{CF_URL}7/", json={}, status=200)
     responses.add(responses.GET, TAG_URL, json={"count": 1, "results": [{"id": 2}]}, status=200)
@@ -108,7 +111,7 @@ def test_ensure_schema_patches_unique_onto_existing_fields():
     assert not [c for c in responses.calls if c.request.method == "POST"]
 
 
-def test_custom_fields_and_tags_speak_platform_one():
+def test_custom_fields_and_tags_speak_platform_one() -> None:
     names = {field["name"] for field in bootstrap.CUSTOM_FIELDS}
     assert names == {
         bootstrap.CF_DEVICE_ID,
