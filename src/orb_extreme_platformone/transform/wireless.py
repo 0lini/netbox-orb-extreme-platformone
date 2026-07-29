@@ -37,12 +37,6 @@ def _split_if_names(value: str | None) -> list[str]:
     return [name.strip() for name in str(value or "").split(",") if name.strip()]
 
 
-def _wireless_radio_key(row: dict) -> str | None:
-    """Join key: required ``asset_interface_id`` on wireless-interface rows."""
-    interface_id = str(row.get("asset_interface_id") or "").strip()
-    return interface_id or None
-
-
 def _ssid_name(row: dict) -> str:
     return str(row.get("name") or "").strip()
 
@@ -103,13 +97,14 @@ def _link_ssid_radios(
     device_id: str,
     ssid: str,
     if_names,
-    name_to_key: dict[str, str],
+    name_to_interface_id: dict[str, str],
     ssids_by_radio: dict[tuple[str, str], list[str]],
 ) -> None:
+    """Attach an SSID to each radio its `if_names` list names."""
     for if_name in _split_if_names(if_names):
-        radio_key = name_to_key.get(if_name)
-        if radio_key and ssid not in ssids_by_radio[(device_id, radio_key)]:
-            ssids_by_radio[(device_id, radio_key)].append(ssid)
+        interface_id = name_to_interface_id.get(if_name)
+        if interface_id and ssid not in ssids_by_radio[(device_id, interface_id)]:
+            ssids_by_radio[(device_id, interface_id)].append(ssid)
 
 
 def radios_to_entities(
@@ -139,51 +134,42 @@ def radios_to_entities(
     radio_rows: dict[tuple[str, str], dict] = {}
 
     for device_id, tables in tables_by_device.items():
-        if device_id not in records:
+        record = records.get(device_id)
+        if record is None:
             continue
-        configs = tables.get("wireless_interfaces") or []
-        states = tables.get("wireless_states") or []
-        ssid_configs = tables.get("ssid_configs") or []
-        ssid_states = tables.get("ssid_states") or []
+        configs = _group_by_interface_id(tables.get("wireless_interfaces") or [])
+        states = _group_by_interface_id(tables.get("wireless_states") or [])
 
-        radios: dict[str, dict] = {}
-        configs_by_key = _group_by_interface_id(configs)
-        for key in configs_by_key:
-            radios.setdefault(key, {"config": {}, "states": []})["config"] = _first_row(
-                configs_by_key,
-                key,
-                table="wireless_interfaces",
-            )
-        for row in states:
-            key = _wireless_radio_key(row)
-            if not key:
-                continue
-            radios.setdefault(key, {"config": {}, "states": []})["states"].append(row)
-
-        name_to_key: dict[str, str] = {}
-        for key, radio in radios.items():
-            config = radio["config"]
-            state = _primary_wireless_state(radio["states"])
-            name = str(config.get("name") or state.get("name") or "").strip()
+        name_to_interface_id: dict[str, str] = {}
+        for interface_id in sorted(set(configs) | set(states)):
+            config = _first_row(configs, interface_id, table="wireless_interfaces")
+            state_rows = states.get(interface_id, [])
+            name = str(config.get("name") or _primary_wireless_state(state_rows).get("name") or "").strip()
             if not name:
                 continue
-            name_to_key[name] = key
-            radio_rows[(device_id, key)] = {
-                "record": records[device_id],
+            name_to_interface_id[name] = interface_id
+            radio_rows[(device_id, interface_id)] = {
+                "record": record,
                 "name": name,
                 "config": config,
-                "states": radio["states"],
+                "states": state_rows,
             }
-            for state_row in radio["states"]:
+            # A radio's own state rows name the SSIDs it is currently serving.
+            for state_row in state_rows:
                 ssid = str(state_row.get("ssid_name") or "").strip()
-                if ssid and ssid not in ssids_by_radio[(device_id, key)]:
-                    ssids_by_radio[(device_id, key)].append(ssid)
+                if ssid and ssid not in ssids_by_radio[(device_id, interface_id)]:
+                    ssids_by_radio[(device_id, interface_id)].append(ssid)
                     _ensure_wlan(wlans, ssid)
 
+        # `enabled` only exists on ssid-config rows and `encryption` only on
+        # ssid-state rows, so one pass over both covers each without either
+        # overwriting the other (_ensure_wlan ORs enabled, keeps first cipher).
+        ssid_configs = tables.get("ssid_configs") or []
+        ssid_states = tables.get("ssid_states") or []
         encryption_by_ssid = {
             _ssid_name(row): row.get("encryption") for row in ssid_states if _ssid_name(row)
         }
-        for row in ssid_configs:
+        for row in (*ssid_configs, *ssid_states):
             ssid = _ssid_name(row)
             if not ssid:
                 continue
@@ -197,19 +183,7 @@ def radios_to_entities(
                 device_id=device_id,
                 ssid=ssid,
                 if_names=row.get("if_names"),
-                name_to_key=name_to_key,
-                ssids_by_radio=ssids_by_radio,
-            )
-        for row in ssid_states:
-            ssid = _ssid_name(row)
-            if not ssid:
-                continue
-            _ensure_wlan(wlans, ssid, encryption=row.get("encryption"))
-            _link_ssid_radios(
-                device_id=device_id,
-                ssid=ssid,
-                if_names=row.get("if_names"),
-                name_to_key=name_to_key,
+                name_to_interface_id=name_to_interface_id,
                 ssids_by_radio=ssids_by_radio,
             )
 
