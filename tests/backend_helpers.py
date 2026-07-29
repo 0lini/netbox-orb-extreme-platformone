@@ -7,6 +7,7 @@ from worker.models import Config, Policy
 
 from orb_extreme_platformone.catalog import FABRIC_DEVICE_TABLES, INTERFACE_ID_TABLES, PORT_TABLES
 from orb_extreme_platformone.client import DEFAULT_BASE_URL, configstate_response_key
+from tests.conftest import CS_SWITCH, SWITCH_ASSET
 
 ASSETS_URL = f"{DEFAULT_BASE_URL}/assets/v1/devices"
 
@@ -34,6 +35,24 @@ def _mock_empty_clusters() -> None:
     means the backend skips retrieve-inferred-cluster entirely.
     """
     _mock_configstate("inferred-device", "InferredDevice", [])
+
+
+def _mock_discovery(assets=None, cs_devices=None, locations=()) -> None:
+    """Mock the Assets listing plus the two ConfigState tables every tick fetches first."""
+    _mock_assets([SWITCH_ASSET] if assets is None else assets)
+    _mock_configstate("asset-device", "AssetDevice", [CS_SWITCH] if cs_devices is None else cs_devices)
+    _mock_configstate("asset-location", "AssetLocation", list(locations))
+
+
+def _mock_port_tables(**rows: list[dict]) -> None:
+    """Mock every port and interface-IP table: named ones get rows, the rest empty.
+
+    Keys are transform table keys (``port_configs``, ``interface_ips``, ...), so
+    a test names only what it cares about and a newly added table cannot be
+    silently left unmocked.
+    """
+    for table_key, (table, _) in {**PORT_TABLES, **INTERFACE_ID_TABLES}.items():
+        _mock_configstate(table, configstate_response_key(table), rows.get(table_key, []))
 
 
 def _mock_empty_port_and_lag_tables(*, include_fabric: bool = True) -> None:

@@ -11,11 +11,13 @@ from orb_extreme_platformone.backend import Backend
 from tests.backend_helpers import (
     _mock_assets,
     _mock_configstate,
+    _mock_discovery,
     _mock_empty_clusters,
     _mock_empty_fabric_tables,
     _mock_empty_interface_id_tables,
     _mock_empty_port_and_lag_tables,
     _mock_empty_port_tables,
+    _mock_port_tables,
     _policy,
 )
 from tests.conftest import CS_SWITCH, SWITCH_ASSET
@@ -23,12 +25,8 @@ from tests.conftest import CS_SWITCH, SWITCH_ASSET
 
 @responses.activate
 def test_run_produces_site_location_device_and_interface_entities() -> None:
-    _mock_assets([SWITCH_ASSET])
-    _mock_configstate("asset-device", "AssetDevice", [CS_SWITCH])
-    _mock_configstate(
-        "asset-location",
-        "AssetLocation",
-        [
+    _mock_discovery(
+        locations=[
             {
                 "asset_device_id": "cs-uuid-42",
                 "site_name": "HQ",
@@ -37,10 +35,8 @@ def test_run_produces_site_location_device_and_interface_entities() -> None:
             },
         ],
     )
-    _mock_configstate(
-        "asset-port-config",
-        "AssetPortConfig",
-        [
+    _mock_port_tables(
+        port_configs=[
             {
                 "asset_device_id": "cs-uuid-42",
                 "asset_interface_id": "if-1",
@@ -49,11 +45,7 @@ def test_run_produces_site_location_device_and_interface_entities() -> None:
                 "description": "uplink",
             },
         ],
-    )
-    _mock_configstate(
-        "asset-port-state",
-        "AssetPortState",
-        [
+        port_states=[
             {
                 "asset_device_id": "cs-uuid-42",
                 "asset_interface_id": "if-1",
@@ -64,11 +56,7 @@ def test_run_produces_site_location_device_and_interface_entities() -> None:
                 "connector_type": 1,
             },
         ],
-    )
-    _mock_configstate(
-        "asset-interface-vlan-properties",
-        "AssetInterfaceVlanProperties",
-        [
+        vlan_properties=[
             {
                 "device_id": "cs-uuid-42",
                 "asset_interface_id": "if-1",
@@ -78,11 +66,6 @@ def test_run_produces_site_location_device_and_interface_entities() -> None:
             },
         ],
     )
-    _mock_configstate("asset-lag-config", "AssetLagConfig", [])
-    _mock_configstate("asset-lag-state", "AssetLagState", [])
-    _mock_configstate("asset-port-capabilities", "AssetPortCapabilities", [])
-    _mock_configstate("asset-poe-power-ports-state", "AssetPoePowerPortsState", [])
-    _mock_empty_interface_id_tables()
     _mock_empty_fabric_tables()
     _mock_empty_clusters()
 
@@ -114,13 +97,7 @@ def test_run_produces_site_location_device_and_interface_entities() -> None:
 
 @responses.activate
 def test_run_attaches_isis_and_spbm_device_custom_fields() -> None:
-    _mock_assets([SWITCH_ASSET])
-    _mock_configstate("asset-device", "AssetDevice", [CS_SWITCH])
-    _mock_configstate(
-        "asset-location",
-        "AssetLocation",
-        [{"asset_device_id": "cs-uuid-42", "site_name": "HQ"}],
-    )
+    _mock_discovery(locations=[{"asset_device_id": "cs-uuid-42", "site_name": "HQ"}])
     _mock_empty_port_and_lag_tables(include_fabric=False)
     _mock_configstate(
         "asset-isis-global-config",
@@ -154,13 +131,9 @@ def test_run_attaches_isis_and_spbm_device_custom_fields() -> None:
 @responses.activate
 def test_run_sets_device_primary_ip_from_configstate_interface_cidr() -> None:
     """Bare Assets management IP must not become /32; use ConfigState mask."""
-    _mock_assets([SWITCH_ASSET])
-    _mock_configstate("asset-device", "AssetDevice", [CS_SWITCH])
-    _mock_configstate("asset-location", "AssetLocation", [])
-    _mock_configstate(
-        "asset-port-config",
-        "AssetPortConfig",
-        [
+    _mock_discovery()
+    _mock_port_tables(
+        port_configs=[
             {
                 "asset_device_id": "cs-uuid-42",
                 "asset_interface_id": "if-1",
@@ -168,17 +141,7 @@ def test_run_sets_device_primary_ip_from_configstate_interface_cidr() -> None:
                 "enabled": True,
             },
         ],
-    )
-    _mock_configstate("asset-port-state", "AssetPortState", [])
-    _mock_configstate("asset-interface-vlan-properties", "AssetInterfaceVlanProperties", [])
-    _mock_configstate("asset-lag-config", "AssetLagConfig", [])
-    _mock_configstate("asset-lag-state", "AssetLagState", [])
-    _mock_configstate("asset-port-capabilities", "AssetPortCapabilities", [])
-    _mock_configstate("asset-poe-power-ports-state", "AssetPoePowerPortsState", [])
-    _mock_configstate(
-        "asset-interface-ip-address",
-        "AssetInterfaceIpAddress",
-        [
+        interface_ips=[
             {
                 "asset_interface_id": "if-1",
                 "address": "10.0.0.2",
@@ -297,9 +260,7 @@ def test_run_survives_a_failed_port_table_and_keeps_the_rest(caplog) -> None:
 
     Tables are fetched concurrently; a single failure must not abort siblings.
     """
-    _mock_assets([SWITCH_ASSET])
-    _mock_configstate("asset-device", "AssetDevice", [CS_SWITCH])
-    _mock_configstate("asset-location", "AssetLocation", [])
+    _mock_discovery()
     _mock_configstate(
         "asset-port-config",
         "AssetPortConfig",
@@ -419,9 +380,7 @@ def test_run_maps_inferred_cluster_to_virtual_chassis() -> None:
 
 @responses.activate
 def test_run_maps_lag_interfaces_and_member_lag_refs() -> None:
-    _mock_assets([SWITCH_ASSET])
-    _mock_configstate("asset-device", "AssetDevice", [CS_SWITCH])
-    _mock_configstate("asset-location", "AssetLocation", [])
+    _mock_discovery()
     _mock_configstate(
         "asset-port-config",
         "AssetPortConfig",
@@ -472,9 +431,7 @@ def test_run_maps_lag_interfaces_and_member_lag_refs() -> None:
 
 @responses.activate
 def test_run_survives_a_failed_inferred_cluster_fetch() -> None:
-    _mock_assets([SWITCH_ASSET])
-    _mock_configstate("asset-device", "AssetDevice", [CS_SWITCH])
-    _mock_configstate("asset-location", "AssetLocation", [])
+    _mock_discovery()
     _mock_empty_port_and_lag_tables()
     _mock_configstate(
         "inferred-device",
@@ -652,13 +609,7 @@ def test_run_maps_ap_radios_and_wlans() -> None:
 
 @responses.activate
 def test_run_site_scope_matches_case_insensitively() -> None:
-    _mock_assets([SWITCH_ASSET])
-    _mock_configstate("asset-device", "AssetDevice", [CS_SWITCH])
-    _mock_configstate(
-        "asset-location",
-        "AssetLocation",
-        [{"asset_device_id": "cs-uuid-42", "site_name": "HQ"}],
-    )
+    _mock_discovery(locations=[{"asset_device_id": "cs-uuid-42", "site_name": "HQ"}])
     _mock_empty_port_tables()
 
     policy = Policy(
