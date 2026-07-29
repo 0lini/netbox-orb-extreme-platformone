@@ -42,12 +42,12 @@ def _ssid_name(row: dict) -> str:
 
 
 def _primary_wireless_state(states: list[dict]) -> dict:
-    """First non-empty state row for radio identity / RF fields.
+    """First state row for radio identity / RF fields, or `{}` when there are none.
 
     Multiple state rows per ``asset_interface_id`` are valid (SSID names), but
     radio_mode / BSSID / power / channel live on a single primary state view.
     """
-    return next((row for row in states if row), {})
+    return states[0] if states else {}
 
 
 def _radio_interface_kwargs(
