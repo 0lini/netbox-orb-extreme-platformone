@@ -27,22 +27,14 @@ if TYPE_CHECKING:
     from orb_extreme_platformone.identity import DeviceRecord
 
 
-def _split_if_names(value) -> list[str]:
-    """Normalize AssetSsid*.if_names (OpenAPI string) into interface names.
+def _split_if_names(value: str | None) -> list[str]:
+    """Split ``AssetSsid*.if_names`` into interface names.
 
-    Accepts a single name, a comma-separated string, or a list. No speculative
-    JSON / alternate-separator parsing.
+    The spec declares it a single ``string``, so one radio and several arrive
+    in the same field with a comma between them. No list form to handle, and
+    no speculative JSON / alternate-separator parsing.
     """
-    if value is None:
-        return []
-    if isinstance(value, list):
-        return [str(item).strip() for item in value if str(item).strip()]
-    text = str(value).strip()
-    if not text:
-        return []
-    if "," in text:
-        return [part.strip() for part in text.split(",") if part.strip()]
-    return [text]
+    return [name.strip() for name in str(value or "").split(",") if name.strip()]
 
 
 def _wireless_radio_key(row: dict) -> str | None:

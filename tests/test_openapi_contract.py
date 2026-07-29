@@ -218,3 +218,26 @@ def test_no_integer_is_serialised_as_a_string(configstate_spec) -> None:
         and str(prop.get("format", "")).startswith("int")
     ]
     assert not offenders, f"string-encoded integers would need _coerce_int to accept them: {offenders}"
+
+
+# Fields whose *shape* the transform layer relies on, beyond scalar type.
+def test_if_names_is_a_single_string_not_a_list(configstate_spec) -> None:
+    """`_split_if_names` splits one comma-separated string; a list would need other handling."""
+    for schema in ("AssetSsidConfig", "AssetSsidState"):
+        prop = configstate_spec["components"]["schemas"][schema]["properties"]["if_names"]
+        assert prop.get("type") == "string", f"{schema}.if_names is no longer a plain string"
+
+
+@pytest.mark.parametrize(
+    ("schema", "field"),
+    [
+        ("AssetInterfaceVlanProperties", "vlans"),
+        ("AssetLagConfig", "member_ports"),
+        ("AssetLagState", "member_ports"),
+    ],
+)
+def test_nullable_collections_stay_nullable(configstate_spec, schema: str, field: str) -> None:
+    """These are read as `row.get(f) or []`; the guard is only needed while they are nullable."""
+    prop = configstate_spec["components"]["schemas"][schema]["properties"][field]
+    assert prop.get("type") == "array"
+    assert prop.get("nullable") is True
