@@ -156,3 +156,65 @@ def test_configstate_pagination_params_still_exist(configstate_spec) -> None:
     post = configstate_spec["paths"]["/retrieve-asset-device"]["post"]
     names = {p.get("name") for p in post.get("parameters", [])}
     assert {"page_number", "page_size"} <= names
+
+
+# ---------------------------------------------------------------------------
+# Declared scalar types
+#
+# The transform layer reads these fields with strict coercion: a bool that is
+# not a bool, or an integer that is not an integer, is dropped rather than
+# guessed at. That is only correct while the spec declares them as it does, so
+# assert the declaration rather than trusting a comment.
+# ---------------------------------------------------------------------------
+
+BOOLEAN_FIELDS = [
+    ("AssetPortConfig", "enabled"),
+    ("AssetLagConfig", "enabled"),
+    ("AssetWirelessInterface", "enabled"),
+    ("AssetSsidConfig", "enabled"),
+    ("AssetPortCapabilities", "management_port"),
+    ("AssetPoePowerPortsState", "supported"),
+    ("AssetInterfaceIpAddress", "is_primary"),
+]
+
+INTEGER_FIELDS = [
+    ("AssetInterfaceIpAddress", "mask_length"),
+    ("AssetPortState", "oper_speed"),
+    ("AssetPortState", "connector_type"),
+    ("AssetPortState", "oper_duplex"),
+    ("AssetPortState", "oper_state"),
+    ("AssetPortConfig", "duplex"),
+    ("AssetInterfaceVlanProperties", "port_vlan"),
+    ("AssetPoePowerPortsConfig", "classification"),
+    ("AssetWirelessInterfaceState", "channel"),
+    ("AssetWirelessInterfaceState", "channel_width"),
+    ("AssetWirelessInterfaceState", "power"),
+]
+
+
+def _declared_type(spec: dict, schema: str, field: str) -> str | None:
+    properties = spec["components"]["schemas"][schema].get("properties") or {}
+    return (properties.get(field) or {}).get("type")
+
+
+@pytest.mark.parametrize(("schema", "field"), BOOLEAN_FIELDS)
+def test_boolean_fields_are_declared_boolean(configstate_spec, schema: str, field: str) -> None:
+    assert _declared_type(configstate_spec, schema, field) == "boolean"
+
+
+@pytest.mark.parametrize(("schema", "field"), INTEGER_FIELDS)
+def test_integer_fields_are_declared_integer(configstate_spec, schema: str, field: str) -> None:
+    assert _declared_type(configstate_spec, schema, field) == "integer"
+
+
+def test_no_integer_is_serialised_as_a_string(configstate_spec) -> None:
+    """`type: string, format: int*` is the idiom that would justify digit-string coercion."""
+    offenders = [
+        f"{name}.{field}"
+        for name, schema in configstate_spec["components"]["schemas"].items()
+        for field, prop in (schema.get("properties") or {}).items()
+        if isinstance(prop, dict)
+        and prop.get("type") == "string"
+        and str(prop.get("format", "")).startswith("int")
+    ]
+    assert not offenders, f"string-encoded integers would need _coerce_int to accept them: {offenders}"

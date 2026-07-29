@@ -22,13 +22,16 @@ PORT_TABLES = {
     "lag_states": ("asset-lag-state", "asset_device_id"),
     "port_capabilities": ("asset-port-capabilities", "asset_device_id"),
     "poe_states": ("asset-poe-power-ports-state", "device_id"),
-    "poe_configs": ("asset-poe-power-ports-config", "device_id"),
 }
 
 # Tables that only filter by asset_interface_id (no device filter). Fetched
 # after port/LAG rows are collected so interface UUIDs are known.
 INTERFACE_ID_TABLES = {
     "interface_ips": ("asset-interface-ip-address", "asset_interface_id"),
+    # PoE *config* has no device filter — unlike PoE state, its GetRequest and
+    # its rows both lack `device_id` entirely, so it can only be fetched once
+    # interface UUIDs are known.
+    "poe_configs": ("asset-poe-power-ports-config", "asset_interface_id"),
 }
 
 # AP radio / WLAN ConfigState tables, batched by AssetDevice UUID.

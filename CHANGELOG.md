@@ -45,6 +45,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   pytest `--strict-markers`/`--strict-config`, and package smoke gated on lint+tests.
 
 ### Fixed
+- PoE configuration was never synced: `retrieve-asset-poe-power-ports-config`
+  was filtered on `device_id`, which that endpoint does not accept — its
+  request and its rows both key on `asset_interface_id` only. It now runs in
+  the interface-UUID phase, so `poe_type` reaches NetBox.
 - `python -m orb_extreme_platformone` produced no output: the standalone dry run
   built each entity's JSON and discarded it.
 - Secret-bearing fields are redacted from upstream error bodies before they

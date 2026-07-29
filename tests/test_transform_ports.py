@@ -112,8 +112,8 @@ def test_ports_to_entities_fiber_gig_port_maps_to_sfp_type(stub_sdk) -> None:
     assert entities[0]._kw["interface"]._kw["type"] == "1000base-x-sfp"
 
 
-def test_ports_to_entities_accepts_string_oper_enum_codes(stub_sdk) -> None:
-    """JSON string codes must still map speed/type/link (same as mask_length)."""
+def test_ports_to_entities_omits_fields_for_off_spec_string_codes(stub_sdk) -> None:
+    """ConfigState declares these `integer`; a string is off-spec, so omit rather than guess."""
     state = {
         **PORT_STATE,
         "oper_state": "1",
@@ -128,10 +128,10 @@ def test_ports_to_entities_accepts_string_oper_enum_codes(stub_sdk) -> None:
         ._kw["interface"]
         ._kw
     )
-    assert port["mark_connected"] is True
-    assert port["speed"] == 1_000_000
-    assert port["type"] == "1000base-t"
-    assert port["duplex"] == "full"
+    assert "mark_connected" not in port
+    assert "speed" not in port
+    assert "type" not in port
+    assert "duplex" not in port
 
 
 def test_ports_to_entities_maps_mgmt_only_from_capabilities(stub_sdk) -> None:
@@ -643,7 +643,12 @@ def test_ports_to_entities_warns_on_conflicting_port_vlan(stub_sdk, caplog) -> N
     assert "Conflicting port_vlan" in caplog.text
 
 
-def test_ports_to_entities_accepts_string_mask_length(stub_sdk) -> None:
+def test_ports_to_entities_skips_ip_when_mask_length_is_off_spec(stub_sdk) -> None:
+    """`mask_length` is declared `integer`; a string yields no prefix, so no IP.
+
+    Skipping is the safe failure: a missing IP is visible in NetBox, whereas
+    padding a bare host to /32 would assert something Platform ONE never said.
+    """
     ips = [
         {
             "asset_interface_id": "if-uuid-1",
@@ -656,12 +661,12 @@ def test_ports_to_entities_accepts_string_mask_length(stub_sdk) -> None:
         _tables(vlan_properties=[], interface_ips=ips),
         record=_port_record(),
     )
-    ip_entities = [e._kw["ip_address"]._kw for e in entities if "ip_address" in e._kw]
-    assert ip_entities[0]["address"] == "10.0.0.2/24"
+    assert not [e for e in entities if "ip_address" in e._kw]
 
 
 # ---------------------------------------------------------------------------
-# Scalar coercion: booleans are strict, integers tolerate the string form
+# Scalar coercion: both are strict; only `enabled` warns, because only there
+# is a mis-read value invisible in NetBox
 # ---------------------------------------------------------------------------
 
 
@@ -669,7 +674,8 @@ def test_enabled_accepts_only_real_booleans(caplog) -> None:
     """`enabled` drives admin state; a non-bool is a contract break, not a spelling.
 
     Guessing at "false"/"no"/0 would not make it safe — an unrecognised value
-    still defaults to admin-up — so the warning is what makes it visible.
+    still defaults to admin-up, showing a disabled port as enabled — so the
+    warning is what makes that visible.
     """
     import logging
 
@@ -685,11 +691,15 @@ def test_enabled_accepts_only_real_booleans(caplog) -> None:
     assert sum("Expected a boolean" in r.message for r in caplog.records) == 2
 
 
-def test_integer_fields_accept_the_string_form() -> None:
-    """ConfigState has been observed sending integers as strings (mask_length, oper_speed)."""
+def test_integer_fields_accept_only_real_integers() -> None:
+    """ConfigState declares these `integer` and string-encodes nothing.
+
+    Unlike `enabled`, an off-spec value here omits the field, which reads as
+    missing data in NetBox rather than as a wrong value — so no warning.
+    """
     from orb_extreme_platformone.transform.common import _coerce_int
 
     assert _coerce_int(24) == 24
-    assert _coerce_int("24") == 24
+    assert _coerce_int("24") is None
     assert _coerce_int("not a number") is None
     assert _coerce_int(True) is None, "bools must not read as 1"

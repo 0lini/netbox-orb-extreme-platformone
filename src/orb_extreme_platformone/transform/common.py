@@ -143,14 +143,16 @@ def _compact_token(value: str, drop: str = " _-") -> str:
 
 
 def _coerce_int(value) -> int | None:
-    """Accept JSON ints or digit-only strings; reject floats/bools/garbage."""
+    """Return a JSON integer, or None for anything else (bools included).
+
+    ConfigState declares every field this guards as ``integer``, and nothing in
+    the spec is serialised as a numeric string, so there is no string form to
+    accept. An off-spec value omits the field, which is visible in NetBox as
+    missing data rather than as a wrong value.
+    """
     if isinstance(value, bool):
         return None
-    if isinstance(value, int):
-        return value
-    if isinstance(value, str) and value.strip().isdigit():
-        return int(value.strip())
-    return None
+    return value if isinstance(value, int) else None
 
 
 def _explicit_cidr(raw, mask_length=None) -> str | None:
