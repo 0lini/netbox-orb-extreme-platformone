@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 from netboxlabs.diode.sdk.ingester import Entity, VirtualChassis
 
-from .common import CF_CLUSTER_ID, PROVENANCE_TAGS, _cf_text, _device_ref, logger
+from .common import PROVENANCE_TAGS, _device_ref, _virtual_chassis_kwargs, logger
 
 # A chassis name needs two distinct names so a shared placeholder ("Default")
 # cannot collapse every chassis to one NetBox name.
@@ -98,21 +98,18 @@ def virtual_chassis_to_entities(
         used_names.add(chassis_name)
 
         cluster_id = str(cluster["id"]) if cluster.get("id") else None
-        vc_kwargs: dict = {
-            "name": chassis_name,
-            "master": _device_ref(record_one),
-            "tags": PROVENANCE_TAGS,
-        }
-        if cluster_id:
-            vc_kwargs["custom_fields"] = {CF_CLUSTER_ID: _cf_text(cluster_id)}
-        entities.append(Entity(virtual_chassis=VirtualChassis(**vc_kwargs)))
-
-        membership_one: dict = {"name": chassis_name, "position": 1}
-        membership_two: dict = {"name": chassis_name, "position": 2}
-        if cluster_id:
-            membership_one["cluster_id"] = cluster_id
-            membership_two["cluster_id"] = cluster_id
-        memberships[one_id] = membership_one
-        memberships[two_id] = membership_two
+        entities.append(
+            Entity(
+                virtual_chassis=VirtualChassis(
+                    **_virtual_chassis_kwargs(chassis_name, cluster_id),
+                    master=_device_ref(record_one),
+                    tags=PROVENANCE_TAGS,
+                ),
+            ),
+        )
+        # device_one is the primary/master, so it takes position 1.
+        extra = {"cluster_id": cluster_id} if cluster_id else {}
+        for position, member_id in ((1, one_id), (2, two_id)):
+            memberships[member_id] = {"name": chassis_name, "position": position, **extra}
 
     return entities, memberships

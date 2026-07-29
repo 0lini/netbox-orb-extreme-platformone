@@ -75,6 +75,20 @@ def _device_identity_fields(record: DeviceRecord) -> dict:
     return kwargs
 
 
+def _virtual_chassis_kwargs(name: str, cluster_id: str | None) -> dict:
+    """Name plus the cluster-id custom field NetBox actually matches chassis on.
+
+    NetBox does not unique ``VirtualChassis.name`` (verified 4.6), so identity
+    is ``platformone_cluster_id``. Both the top-level VirtualChassis entity and
+    the nested ref on each member device must carry it, or Diode reconciles
+    them to different chassis.
+    """
+    kwargs: dict = {"name": name}
+    if cluster_id:
+        kwargs["custom_fields"] = {CF_CLUSTER_ID: _cf_text(str(cluster_id))}
+    return kwargs
+
+
 def _interface_custom_fields(*, interface_id: str | None = None) -> dict:
     """Build interface custom fields (ConfigState asset_interface_id)."""
     if not interface_id:

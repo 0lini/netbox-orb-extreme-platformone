@@ -20,12 +20,12 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
 
 from .common import (
-    CF_CLUSTER_ID,
     CF_DEVICE_ID,
     MANUFACTURER,
     PROVENANCE_TAGS,
     _cf_text,
     _device_identity_fields,
+    _virtual_chassis_kwargs,
     logger,
 )
 
@@ -101,13 +101,9 @@ def _device_kwargs(
     if platform:
         kwargs["platform"] = Platform(name=platform, manufacturer=MANUFACTURER)
     if vc_membership:
-        # Include platformone_cluster_id so Diode matches the same VC as the
-        # top-level entity (NetBox VirtualChassis.name is not unique).
-        vc_kwargs: dict = {"name": vc_membership["name"]}
-        cluster_id = vc_membership.get("cluster_id")
-        if cluster_id:
-            vc_kwargs["custom_fields"] = {CF_CLUSTER_ID: _cf_text(str(cluster_id))}
-        kwargs["virtual_chassis"] = VirtualChassis(**vc_kwargs)
+        kwargs["virtual_chassis"] = VirtualChassis(
+            **_virtual_chassis_kwargs(vc_membership["name"], vc_membership.get("cluster_id")),
+        )
         kwargs["vc_position"] = vc_membership["position"]
     return kwargs
 
