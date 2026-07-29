@@ -658,3 +658,38 @@ def test_ports_to_entities_accepts_string_mask_length(stub_sdk) -> None:
     )
     ip_entities = [e._kw["ip_address"]._kw for e in entities if "ip_address" in e._kw]
     assert ip_entities[0]["address"] == "10.0.0.2/24"
+
+
+# ---------------------------------------------------------------------------
+# Scalar coercion: booleans are strict, integers tolerate the string form
+# ---------------------------------------------------------------------------
+
+
+def test_enabled_accepts_only_real_booleans(caplog) -> None:
+    """`enabled` drives admin state; a non-bool is a contract break, not a spelling.
+
+    Guessing at "false"/"no"/0 would not make it safe — an unrecognised value
+    still defaults to admin-up — so the warning is what makes it visible.
+    """
+    import logging
+
+    from orb_extreme_platformone.transform.common import _coerce_bool
+
+    assert _coerce_bool(True) is True
+    assert _coerce_bool(False) is False
+    assert _coerce_bool(None) is None
+
+    with caplog.at_level(logging.WARNING, logger="orb_extreme_platformone"):
+        assert _coerce_bool("false") is None
+        assert _coerce_bool(0) is None
+    assert sum("Expected a boolean" in r.message for r in caplog.records) == 2
+
+
+def test_integer_fields_accept_the_string_form() -> None:
+    """ConfigState has been observed sending integers as strings (mask_length, oper_speed)."""
+    from orb_extreme_platformone.transform.common import _coerce_int
+
+    assert _coerce_int(24) == 24
+    assert _coerce_int("24") == 24
+    assert _coerce_int("not a number") is None
+    assert _coerce_int(True) is None, "bools must not read as 1"

@@ -83,17 +83,22 @@ def _interface_custom_fields(*, interface_id: str | None = None) -> dict:
 
 
 def _coerce_bool(value) -> bool | None:
-    """Accept JSON bools, 0/1, or common true/false strings; else None."""
+    """Return a JSON boolean, or None when the field is absent or not a bool.
+
+    ConfigState types these fields as booleans, so anything else is a contract
+    break worth seeing in the logs. Guessing at spellings would not make it
+    safe: callers read None as "unknown" and default admin state to up, so a
+    value we fail to recognise shows a disabled port as enabled in NetBox
+    either way — the warning is what makes that visible.
+    """
     if isinstance(value, bool):
         return value
-    if isinstance(value, (int, float)) and value in (0, 1):
-        return bool(value)
-    if isinstance(value, str):
-        text = value.strip().casefold()
-        if text in {"true", "1", "yes"}:
-            return True
-        if text in {"false", "0", "no"}:
-            return False
+    if value is not None:
+        logger.warning(
+            "Expected a boolean, got %r (%s); treating as unknown",
+            value,
+            type(value).__name__,
+        )
     return None
 
 
