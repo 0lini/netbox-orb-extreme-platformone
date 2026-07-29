@@ -16,7 +16,7 @@ from .port_constants import (
     VERIFIED_POE_CLASSIFICATION,
 )
 from .port_join import JoinedPortTables, _first_row, _optional_first_row
-from .vlans import _vlan_fields, _vlan_records_for
+from .vlans import _vlan_fields
 
 
 def _poe_mode(state: dict) -> str | None:
@@ -164,7 +164,7 @@ def _physical_port_entities(
             interface_id=interface_id,
             config=config,
             state=state,
-            vlan_records=_vlan_records_for(tables.vlans, interface_id=interface_id),
+            vlan_records=tables.vlans.get(interface_id, []),
             capability=tables.capabilities.get((port_device_id, name)),
             poe_state=_optional_first_row(tables.poe_states, interface_id, table="poe_states"),
             poe_config=_optional_first_row(tables.poe_configs, interface_id, table="poe_configs"),

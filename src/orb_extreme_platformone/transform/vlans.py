@@ -23,13 +23,6 @@ def _vlan_ref(vid: int) -> VLAN:
     return VLAN(vid=vid, name=str(vid))
 
 
-def _vlan_records_for(vlans_by_id: dict[str, list[dict]], *, interface_id: str | None) -> list[dict]:
-    """VLAN rows for an interface, joined only on asset_interface_id."""
-    if interface_id and interface_id in vlans_by_id:
-        return vlans_by_id[interface_id]
-    return []
-
-
 def _vlan_fields(vlan_records: list[dict]) -> dict:
     """untagged_vlan / tagged_vlans / mode from AssetInterfaceVlanProperties rows.
 
@@ -61,15 +54,12 @@ def _vlan_fields(vlan_records: list[dict]) -> dict:
                 )
         for vlan_map in record.get("vlans") or []:
             number = _coerce_int(vlan_map.get("vlan_number")) if isinstance(vlan_map, dict) else None
-            if number is not None and number > 0:
+            if number is not None and number > 0 and not _is_extreme_reserved_vlan(number):
                 mapped.add(number)
     if untagged is not None and _is_extreme_reserved_vlan(untagged):
         untagged = None
-    tagged = sorted(
-        vid
-        for vid in (mapped - {untagged} if untagged is not None else mapped)
-        if not _is_extreme_reserved_vlan(vid)
-    )
+    # `mapped` holds ints, so discarding a None untagged is a no-op.
+    tagged = sorted(mapped - {untagged})
 
     fields: dict = {}
     if untagged is not None:
