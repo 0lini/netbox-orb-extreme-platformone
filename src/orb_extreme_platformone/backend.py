@@ -11,6 +11,7 @@ transform lives in `transform/`.
 
 from __future__ import annotations
 
+import logging
 import os
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as pkg_version
@@ -22,7 +23,6 @@ from worker.models import Metadata, Policy
 from . import bootstrap, transform
 from .client import (
     DEFAULT_BASE_URL,
-    DEFAULT_TIMEOUT_SECONDS,
     PlatformOneApiError,
     PlatformOneClient,
 )
@@ -31,7 +31,6 @@ from .extract.clusters import extract_inferred_clusters
 from .extract.fabric import extract_fabric_tables
 from .extract.ports import extract_port_tables
 from .extract.wireless import extract_wireless_tables
-from .logging_context import get_logger, set_policy_name
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable
@@ -40,7 +39,7 @@ if TYPE_CHECKING:
 
     from .identity import DeviceRecord
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 APP_NAME = "netbox-orb-extreme-platformone"
 try:
@@ -51,10 +50,6 @@ except PackageNotFoundError:
 # narrow with the `classification` policy key. Port sync stays gated on
 # switch-OS devices regardless (see is_switch).
 DEFAULT_CLASSIFICATION = "ALL"
-
-# Per-tick discovery phases an operator can switch off with `disable_domains`
-# when one starts misbehaving, without editing code and redeploying.
-DISCOVERY_DOMAINS = ("virtual_chassis", "ports", "wireless")
 
 __all__ = ["APP_NAME", "APP_VERSION", "DEFAULT_CLASSIFICATION", "Backend"]
 
@@ -109,56 +104,24 @@ def _policy_bool(config: object, key: str, *, default: bool = False) -> bool:
     return raw.strip().casefold() in {"1", "true", "yes", "on"}
 
 
-def _string_set(raw: object, *, what: str) -> set[str] | None:
-    """Coerce a policy value to a set of non-empty strings, or None if unusable.
-
-    Shared by ``scope.sites`` and ``disable_domains``: both accept a list and
-    tolerate a bare string, and both must reject one outright rather than let
-    ``list("HQ")`` become ``["H", "Q"]``.
-    """
-    if raw is None:
-        return None
-    if isinstance(raw, str):
-        cleaned = {raw.strip()} if raw.strip() else set()
-    elif isinstance(raw, (list, tuple, set)):
-        cleaned = {str(item).strip() for item in raw if str(item).strip()}
-    else:
-        logger.warning("Ignoring invalid %s %r", what, raw)
-        return None
-    return cleaned or None
-
-
-def _enabled_domains(config: object) -> set[str]:
-    """Discovery domains to run this tick; `disable_domains` opts phases out.
-
-    Note the coupling: disabling ``ports`` also drops Device primary IPs and
-    the ISIS/SPBM custom fields, because the port fan-out is what supplies them.
-    """
-    disabled = _string_set(_policy_value(config, "disable_domains", None), what="disable_domains")
-    if not disabled:
-        return set(DISCOVERY_DOMAINS)
-    unknown = sorted(disabled - set(DISCOVERY_DOMAINS))
-    if unknown:
-        logger.warning(
-            "Ignoring unknown disable_domains entries %s; known domains: %s",
-            ", ".join(unknown),
-            ", ".join(DISCOVERY_DOMAINS),
-        )
-    return set(DISCOVERY_DOMAINS) - disabled
-
-
 def _scope_sites(scope: object) -> set[str] | None:
     """Return an explicit site allow-list, or None for all sites.
 
     ``sites: ["*"]``, missing/empty ``sites``, and a non-dict scope all mean
-    "no filter".
+    "no filter". A bare string is accepted as one site rather than split into
+    characters the way ``set("HQ")`` would.
     """
     if not isinstance(scope, dict):
         return None
     sites = scope.get("sites")
     if sites in (None, [], ["*"], "*"):
         return None
-    return _string_set(sites, what="policy scope.sites")
+    if isinstance(sites, str):
+        return {sites.strip()} if sites.strip() else None
+    if not isinstance(sites, (list, tuple, set)):
+        logger.warning("Ignoring invalid policy scope.sites %r; syncing all sites", sites)
+        return None
+    return {str(site).strip() for site in sites if str(site).strip()} or None
 
 
 def _records_by_cs_id(
@@ -225,30 +188,12 @@ def _fanout_context(
     return FanoutContext(by_cs_id, sorted(by_cs_id), names)
 
 
-def _policy_timeout(config: object) -> float:
-    """Per-request timeout in seconds; falls back to the transport default."""
-    raw = _policy_or_env(config, "PLATFORMONE_TIMEOUT")
-    try:
-        timeout = float(raw) if raw is not None else DEFAULT_TIMEOUT_SECONDS
-    except (TypeError, ValueError):
-        timeout = 0.0
-    if timeout <= 0:
-        logger.warning(
-            "Ignoring unusable PLATFORMONE_TIMEOUT %r; using %ss",
-            raw,
-            DEFAULT_TIMEOUT_SECONDS,
-        )
-        return DEFAULT_TIMEOUT_SECONDS
-    return timeout
-
-
 def _build_client(config: object) -> PlatformOneClient:
     return PlatformOneClient(
         base_url=_policy_or_env(config, "PLATFORMONE_API_URL") or DEFAULT_BASE_URL,
         api_token=_policy_or_env(config, "PLATFORMONE_API_TOKEN"),
         username=_policy_or_env(config, "PLATFORMONE_USERNAME"),
         password=_policy_or_env(config, "PLATFORMONE_PASSWORD"),
-        timeout=_policy_timeout(config),
     )
 
 
@@ -275,7 +220,6 @@ class Backend(WorkerBackend):
         traceback: without it the package logged nothing above WARNING, and a
         total failure was indistinguishable from routine table degradation.
         """
-        set_policy_name(policy_name)
         try:
             return self._run(policy_name, policy)
         except Exception:
@@ -311,26 +255,16 @@ class Backend(WorkerBackend):
             len(scoped),
         )
 
-        domains = _enabled_domains(config)
-        if domains != set(DISCOVERY_DOMAINS):
-            logger.info(
-                "Policy %s: discovery domains disabled by policy: %s",
-                policy_name,
-                ", ".join(sorted(set(DISCOVERY_DOMAINS) - domains)),
-            )
-
-        vc_entities, vc_memberships = (
-            self._virtual_chassis_entities(client, scoped, policy_name)
-            if "virtual_chassis" in domains
-            else ([], {})
-        )
+        vc_entities, vc_memberships = self._virtual_chassis_entities(client, scoped, policy_name)
         # Port/LAG/IP + fabric (ISIS/SPBM) tables are fetched before Device
         # entities so primary_ip can use ConfigState interface CIDRs and so
         # Device CFs can carry ISIS area / system id / SPBM nickname.
-        port_entities, primary_ips_by_cs_id, fabric_by_cs_id = (
-            self._port_entities(client, scoped, policy_name) if "ports" in domains else ([], {}, {})
+        port_entities, primary_ips_by_cs_id, fabric_by_cs_id = self._port_entities(
+            client,
+            scoped,
+            policy_name,
         )
-        radio_entities = self._radio_entities(client, scoped, policy_name) if "wireless" in domains else []
+        radio_entities = self._radio_entities(client, scoped, policy_name)
         # Emit Devices *without* primary_ip* first so serial / custom fields are
         # not bundled into a Diode update that NetBox rejects when the IP is not
         # yet assigned. Assert primary_ip* in a follow-up after port/IP entities.

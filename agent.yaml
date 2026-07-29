@@ -50,19 +50,6 @@ orb:
           PLATFORMONE_PASSWORD: ${PLATFORMONE_PASSWORD}
           # PLATFORMONE_API_TOKEN: ${PLATFORMONE_API_TOKEN}   # optional alternative
           # PLATFORMONE_API_URL: https://cloudapi.extremecloudiq.com   # default
-          # PLATFORMONE_TIMEOUT: 60          # per-request seconds (default 60).
-                                             # Transient failures (429/5xx and
-                                             # connection errors) retry 3x with
-                                             # exponential backoff before a table
-                                             # degrades for the tick.
-
-          # disable_domains: ["wireless"]   # skip a misbehaving discovery phase
-                                             # without a redeploy. Known domains:
-                                             # virtual_chassis, ports, wireless.
-                                             # Note: disabling `ports` also drops
-                                             # Device primary IPs and ISIS/SPBM
-                                             # custom fields -- the port fan-out
-                                             # is what supplies them.
 
           classification: ALL              # Assets device filter: ALL (default),
                                            # SWITCH, WIRELESS, ROUTER, ... Port sync

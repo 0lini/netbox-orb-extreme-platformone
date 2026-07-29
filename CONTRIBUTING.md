@@ -30,5 +30,6 @@ Optional: `pre-commit install` to run Ruff + ty on commit (see `.pre-commit-conf
   coverage 90%, package smoke after lint/tests).
 - Update [`CHANGELOG.md`](CHANGELOG.md) under `[Unreleased]` for user-visible changes.
 
-Naming and logging conventions, plus the domain glossary for the two
-upstream device-id spaces, are in [docs/naming-conventions.md](docs/naming-conventions.md).
+The domain glossary for the two upstream device-id spaces is in
+[docs/naming-conventions.md](docs/naming-conventions.md) — read it before naming
+anything that holds an identifier.

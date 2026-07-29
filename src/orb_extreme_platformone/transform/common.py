@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ipaddress
+import logging
 
 from netboxlabs.diode.sdk.ingester import (
     CustomFieldValue,
@@ -13,7 +14,6 @@ from netboxlabs.diode.sdk.ingester import (
 )
 
 from orb_extreme_platformone.identity import DeviceRecord, device_type_model_for, role_for
-from orb_extreme_platformone.logging_context import get_logger
 from orb_extreme_platformone.schema import (
     CF_CLUSTER_ID,
     CF_DEVICE_ID,
@@ -25,7 +25,7 @@ from orb_extreme_platformone.schema import (
     TAG_NAMES,
 )
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 PROVENANCE_TAGS = list(TAG_NAMES)
 

@@ -2,16 +2,16 @@
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING
 
 from orb_extreme_platformone.client import PlatformOneApiError, PlatformOneClient
 from orb_extreme_platformone.identity import DeviceRecord
-from orb_extreme_platformone.logging_context import get_logger
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 def extract_cs_devices(client: PlatformOneClient, assets: list[dict]) -> list[dict]:

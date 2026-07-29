@@ -15,12 +15,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `is_auth_failure` / `is_not_found` / `is_transient`, so callers can tell a
   permanent failure from a retryable one. An authentication failure now aborts
   the tick instead of degrading every remaining table in turn.
-- `PLATFORMONE_TIMEOUT` (per-request seconds) and `disable_domains` (skip a
-  misbehaving discovery phase without a redeploy) policy keys — see `agent.yaml`.
-  Note that disabling `ports` also drops Device primary IPs and the ISIS/SPBM
-  custom fields, since the port fan-out supplies both.
-- Tick failures are logged at ERROR with a traceback, and log records carry the
-  policy name via a `%(policy)s` field even from helpers that never see it.
+- Tick failures are logged at ERROR with a traceback; the package previously
+  had no ERROR-level record at all, so a dead tick was indistinguishable from
+  routine table degradation.
 - Device custom fields for fabric identity: `platformone_isis_area`,
   `platformone_isis_system_id`, and `platformone_spbm_nickname` (from
   ConfigState ISIS global config/state and SPBM instance). Re-run bootstrap

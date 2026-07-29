@@ -2,17 +2,17 @@
 
 from __future__ import annotations
 
+import logging
 from concurrent.futures import ThreadPoolExecutor
 from typing import TYPE_CHECKING, NamedTuple
 
 from orb_extreme_platformone.client import PlatformOneApiError, PlatformOneClient
 from orb_extreme_platformone.http import MAX_CONCURRENT_REQUESTS
-from orb_extreme_platformone.logging_context import current_policy_name, get_logger, set_policy_name
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 # Catalog: transform key -> (retrieve-* table, GetRequest filter field).
 TableCatalog = dict[str, tuple[str, str]]
@@ -49,13 +49,7 @@ def retrieve_parallel(
     if not jobs:
         return []
 
-    # contextvars do not cross into pool threads, so carry the policy name over
-    # explicitly and re-bind it inside each worker. (Passing a copied Context to
-    # submit() does not work: one Context cannot be entered by two threads.)
-    policy_name = current_policy_name()
-
     def _run_job(table: str, filters: dict) -> RetrieveResult:
-        set_policy_name(policy_name)
         try:
             return RetrieveResult(table, list(client.retrieve(table, filters)), None)
         except PlatformOneApiError as exc:
@@ -129,8 +123,8 @@ def extract_device_table_buckets(
     Rows are keyed by the catalog's GetRequest filter field
     (``asset_device_id`` or ``device_id``) — no cross-field fallback.
 
-    ``cs_device_ids`` are ConfigState AssetDevice UUIDs, not Assets device ids;
-    see the glossary in docs/naming-conventions.md.
+    ``cs_device_ids`` are ConfigState AssetDevice UUIDs, not the Assets API's
+    own ``device_id``.
     """
     failures = failed_tables if failed_tables is not None else []
     tables_by_device: dict[str, dict[str, list[dict]]] = {
