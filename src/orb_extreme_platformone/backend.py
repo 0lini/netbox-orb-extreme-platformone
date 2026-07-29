@@ -15,31 +15,29 @@ import logging
 import os
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as pkg_version
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NamedTuple
 
 from worker.backend import Backend as WorkerBackend
 from worker.models import Metadata, Policy
 
 from . import bootstrap, transform
-from .client import DEFAULT_BASE_URL, PlatformOneApiError, PlatformOneClient
-from .extract import (
-    CLUSTER_MEMBER_FILTERS,
-    FABRIC_DEVICE_TABLES,
-    INTERFACE_ID_TABLES,
-    PORT_TABLES,
-    WIRELESS_TABLES,
-    correlated_records,
+from .client import (
+    DEFAULT_BASE_URL,
+    PlatformOneApiError,
+    PlatformOneClient,
 )
+from .extract import correlated_records
 from .extract.clusters import extract_inferred_clusters
 from .extract.fabric import extract_fabric_tables
 from .extract.ports import extract_port_tables
 from .extract.wireless import extract_wireless_tables
-from .identity import asset_label, device_name, is_ap, is_switch, resolve_location
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
+    from collections.abc import Callable, Iterable
 
     from netboxlabs.diode.sdk.ingester import Entity
+
+    from .identity import DeviceRecord
 
 logger = logging.getLogger(__name__)
 
@@ -53,19 +51,7 @@ except PackageNotFoundError:
 # switch-OS devices regardless (see is_switch).
 DEFAULT_CLASSIFICATION = "ALL"
 
-# Re-exported for tests / contract checks that historically imported catalogs
-# from this module.
-__all__ = [
-    "APP_NAME",
-    "APP_VERSION",
-    "CLUSTER_MEMBER_FILTERS",
-    "DEFAULT_CLASSIFICATION",
-    "FABRIC_DEVICE_TABLES",
-    "INTERFACE_ID_TABLES",
-    "PORT_TABLES",
-    "WIRELESS_TABLES",
-    "Backend",
-]
+__all__ = ["APP_NAME", "APP_VERSION", "DEFAULT_CLASSIFICATION", "Backend"]
 
 
 def _log_failed_tables(policy_name: str, failed_tables: list[str], *, domain: str = "") -> None:
@@ -81,24 +67,49 @@ def _log_failed_tables(policy_name: str, failed_tables: list[str], *, domain: st
     )
 
 
-def _cfg(config, key: str, default=None):
+def _policy_value(config: object, key: str, default: object = None) -> object:
     return getattr(config, key, default) if config is not None else default
 
 
-def _cfg_or_env(config, key: str, *, default=None):
-    """Policy config wins when set (including empty string); else environment."""
-    value = _cfg(config, key, None)
+def _policy_or_env(
+    config: object,
+    key: str,
+    *,
+    env_key: str | None = None,
+) -> str | None:
+    """Policy config wins when set (including empty string); else environment.
+
+    ``env_key`` names the environment variable when it differs from the policy
+    key (the policy key is the documented ``agent.yaml`` contract, while the
+    environment spelling is conventionally upper-case).
+    """
+    value = _policy_value(config, key, None)
     if value is not None:
+        return str(value)
+    return os.environ.get(env_key or key)
+
+
+def _policy_bool(config: object, key: str, *, default: bool = False) -> bool:
+    """Resolve a boolean policy key, coercing environment strings.
+
+    Environment values arrive as strings, so a bare truthiness test would read
+    ``BOOTSTRAP=false`` as enabled.
+    """
+    value = _policy_value(config, key, None)
+    if isinstance(value, bool):
         return value
-    return os.environ.get(key, default)
+    raw = os.environ.get(key) if value is None else str(value)
+    if raw is None:
+        return default
+    return raw.strip().casefold() in {"1", "true", "yes", "on"}
 
 
-def _scope_sites(scope) -> list[str] | None:
+def _scope_sites(scope: object) -> set[str] | None:
     """Return an explicit site allow-list, or None for all sites.
 
-    Accepts ``sites: ["*"]``, missing/empty ``sites``, or a non-dict scope as
-    "no filter". A bare string is rejected (``list("HQ")`` would otherwise
-    become ``["H", "Q"]``).
+    ``sites: ["*"]``, missing/empty ``sites``, and a non-dict scope all mean
+    "no filter". A bare string is accepted as one site rather than split into
+    characters the way ``set("HQ")`` would.
     """
     if not isinstance(scope, dict):
         return None
@@ -106,91 +117,83 @@ def _scope_sites(scope) -> list[str] | None:
     if sites in (None, [], ["*"], "*"):
         return None
     if isinstance(sites, str):
-        logger.warning("Ignoring invalid policy scope.sites string %r; syncing all sites", sites)
-        return None
+        return {sites.strip()} if sites.strip() else None
     if not isinstance(sites, (list, tuple, set)):
         logger.warning("Ignoring invalid policy scope.sites %r; syncing all sites", sites)
         return None
-    cleaned = [str(site).strip() for site in sites if str(site).strip()]
-    return cleaned or None
+    return {str(site).strip() for site in sites if str(site).strip()} or None
 
 
-def _records_by_cs_id(records: list[dict], *, predicate) -> dict[str, dict]:
+def _records_by_cs_id(
+    records: list[DeviceRecord],
+    *,
+    predicate: Callable[[DeviceRecord], bool],
+) -> dict[str, DeviceRecord]:
     """Index records by cs_device_id, keeping the first and warning on collisions.
 
     Port/radio/VC fan-out is keyed by ConfigState UUID; two Assets rows that
     correlate to the same UUID would otherwise silently overwrite each other.
     """
-    by_id: dict[str, dict] = {}
+    by_id: dict[str, DeviceRecord] = {}
     for record in records:
-        cs_id = record.get("cs_device_id")
+        cs_id = record.cs_device_id
         if not cs_id or not predicate(record):
             continue
         if cs_id in by_id:
             logger.warning(
-                "Duplicate ConfigState device id %s across Assets rows "
-                "(%r and %r); keeping the first for table fan-out",
+                "Duplicate ConfigState device id %s across Assets rows (%r and %r); "
+                "keeping the first — %r will sync as a Device with no ports/radios/VC",
                 cs_id,
-                asset_label(by_id[cs_id]["asset"]),
-                asset_label(record["asset"]),
+                by_id[cs_id].label,
+                record.label,
+                record.label,
             )
             continue
         by_id[cs_id] = record
     return by_id
 
 
-def _device_names(
-    records_by_cs_id: dict[str, dict],
-    *,
-    policy_name: str,
-    kind: str,
-) -> dict[str, str]:
-    """Map ConfigState device id → hostname; warn and omit empty host_name rows."""
-    names: dict[str, str] = {}
-    for device_id, record in records_by_cs_id.items():
-        name = device_name(record["asset"])
-        if name:
-            names[device_id] = name
-            continue
-        logger.warning(
-            "Policy %s: skipping %s for %s: Assets host_name is empty",
-            policy_name,
-            kind,
-            asset_label(record["asset"]),
-        )
-    return names
+class FanoutContext(NamedTuple):
+    """Per-device indexes a ConfigState fan-out phase needs.
+
+    ``names`` omits records with no Assets hostname: NetBox cannot create a
+    Device without one, so those are skipped rather than invented.
+    """
+
+    records: dict[str, DeviceRecord]
+    cs_device_ids: list[str]
+    names: dict[str, str]
 
 
 def _fanout_context(
-    records: list[dict],
+    records: list[DeviceRecord],
     *,
-    predicate,
+    predicate: Callable[[DeviceRecord], bool],
     policy_name: str,
     kind: str,
-) -> tuple[dict[str, dict], list[str], dict[str, str], dict[str, dict]]:
-    """Common ConfigState fan-out indexes for per-device table extracts."""
-    records_by_cs_id = _records_by_cs_id(records, predicate=predicate)
-    device_ids = sorted(records_by_cs_id)
-    device_names = _device_names(records_by_cs_id, policy_name=policy_name, kind=kind)
-    device_meta: dict[str, dict] = {}
-    for device_id, record in records_by_cs_id.items():
-        asset = record["asset"]
-        site_name, _ = resolve_location(record.get("location"), asset)
-        device_meta[device_id] = {
-            "site_name": site_name,
-            "function": asset.get("function"),
-            "product_type": asset.get("product_type"),
-            "asset_ip": asset.get("ip_address"),
-        }
-    return records_by_cs_id, device_ids, device_names, device_meta
+) -> FanoutContext:
+    """Build the ConfigState fan-out indexes for per-device table extracts."""
+    by_cs_id = _records_by_cs_id(records, predicate=predicate)
+    names: dict[str, str] = {}
+    for cs_device_id, record in by_cs_id.items():
+        if record.name:
+            names[cs_device_id] = record.name
+        else:
+            logger.warning(
+                "Policy %s: skipping %s for %s: Assets host_name is empty",
+                policy_name,
+                kind,
+                record.label,
+            )
+    return FanoutContext(by_cs_id, sorted(by_cs_id), names)
 
 
-def _build_client(config) -> PlatformOneClient:
+def _build_client(config: object) -> PlatformOneClient:
     return PlatformOneClient(
-        base_url=_cfg_or_env(config, "PLATFORMONE_API_URL", default=DEFAULT_BASE_URL),
-        api_token=_cfg_or_env(config, "PLATFORMONE_API_TOKEN"),
-        username=_cfg_or_env(config, "PLATFORMONE_USERNAME"),
-        password=_cfg_or_env(config, "PLATFORMONE_PASSWORD"),
+        base_url=_policy_or_env(config, "PLATFORMONE_API_URL") or DEFAULT_BASE_URL,
+        api_token=_policy_or_env(config, "PLATFORMONE_API_TOKEN"),
+        username=_policy_or_env(config, "PLATFORMONE_USERNAME"),
+        password=_policy_or_env(config, "PLATFORMONE_PASSWORD"),
     )
 
 
@@ -199,6 +202,7 @@ class Backend(WorkerBackend):
 
     @classmethod
     def describe(cls) -> Metadata:
+        """Report this worker's identity without constructing it."""
         return Metadata(
             name="orb_extreme_platformone",
             app_name=APP_NAME,
@@ -210,35 +214,39 @@ class Backend(WorkerBackend):
         )
 
     def run(self, policy_name: str, policy: Policy, **_kwargs) -> Iterable[Entity]:
+        """Produce the Diode entities for one policy tick.
+
+        Wraps ``_run`` so a tick that dies is recorded at ERROR with a
+        traceback: without it the package logged nothing above WARNING, and a
+        total failure was indistinguishable from routine table degradation.
+        """
+        try:
+            return self._run(policy_name, policy)
+        except Exception:
+            logger.exception("Policy %s: tick failed and produced no entities", policy_name)
+            raise
+
+    def _run(self, policy_name: str, policy: Policy) -> list[Entity]:
         config = policy.config
 
-        if _cfg(config, "BOOTSTRAP", False):
-            netbox_url = _cfg_or_env(config, "NETBOX_API_URL")
-            netbox_token = _cfg_or_env(config, "NETBOX_API_TOKEN")
-            if not netbox_url or not netbox_token:
-                msg = (
-                    "BOOTSTRAP is enabled but NETBOX_API_URL / NETBOX_API_TOKEN "
-                    "are missing; provide both or set BOOTSTRAP: false"
-                )
-                raise ValueError(
-                    msg,
-                )
-            logger.info("Policy %s: running bootstrap (custom fields + provenance tags)", policy_name)
-            bootstrap.ensure_schema(netbox_url, netbox_token)
+        if _policy_bool(config, "BOOTSTRAP"):
+            self._bootstrap(config, policy_name)
 
         client = _build_client(config)
-        classification = _cfg(config, "classification", DEFAULT_CLASSIFICATION)
+        classification = (
+            _policy_or_env(config, "classification", env_key="PLATFORMONE_CLASSIFICATION")
+            or DEFAULT_CLASSIFICATION
+        )
         assets = list(client.get_devices(classification=classification))
 
         records = correlated_records(client, assets, policy_name)
 
-        scope_sites = _scope_sites(getattr(policy, "scope", None))
         # Backend owns scoping: port fan-out and devices_to_entities must see
         # the same filtered list. Pass site_scope=None into transform so it
         # does not re-filter (see transform.scope_devices / devices_to_entities).
         scoped = transform.scope_devices(
             records,
-            site_scope=set(scope_sites) if scope_sites else None,
+            site_scope=_scope_sites(getattr(policy, "scope", None)),
         )
         logger.info(
             "Policy %s: fetched %d devices from Platform ONE (%d in scope)",
@@ -272,12 +280,46 @@ class Backend(WorkerBackend):
             transform.primary_ip_device_entities(scoped, primary_ips_by_cs_id=primary_ips_by_cs_id),
         )
 
+        client.close()
+        logger.info(
+            "Policy %s: tick complete; %d entities from %d in-scope device(s)",
+            policy_name,
+            len(entities),
+            len(scoped),
+        )
         return entities
+
+    @staticmethod
+    def _bootstrap(config: object, policy_name: str) -> None:
+        """Create the NetBox custom fields and provenance tags, or fail closed.
+
+        Failing closed is deliberate: syncing into a NetBox that lacks the
+        ``platformone_*`` fields would silently drop provenance, so a bootstrap
+        the operator explicitly asked for must not be skipped on error.
+        """
+        netbox_url = _policy_or_env(config, "NETBOX_API_URL")
+        netbox_token = _policy_or_env(config, "NETBOX_API_TOKEN")
+        if not netbox_url or not netbox_token:
+            msg = (
+                "BOOTSTRAP is enabled but NETBOX_API_URL / NETBOX_API_TOKEN "
+                "are missing; provide both or set BOOTSTRAP: false"
+            )
+            raise ValueError(msg)
+        logger.info("Policy %s: running bootstrap (custom fields + provenance tags)", policy_name)
+        try:
+            bootstrap.ensure_schema(netbox_url, netbox_token)
+        except bootstrap.NetBoxApiError as exc:
+            msg = (
+                f"Bootstrap failed against NetBox ({exc}); custom fields and tags may be "
+                "incomplete. Fix NetBox connectivity and re-run with BOOTSTRAP: true, "
+                "or set BOOTSTRAP: false to sync without schema setup."
+            )
+            raise RuntimeError(msg) from exc
 
     @staticmethod
     def _virtual_chassis_entities(
         client: PlatformOneClient,
-        records: list[dict],
+        records: list[DeviceRecord],
         policy_name: str,
     ) -> tuple[list[Entity], dict[str, dict]]:
         """Fetch InferredCluster and map to VirtualChassis + memberships.
@@ -286,12 +328,12 @@ class Backend(WorkerBackend):
         aborting the sync.
         """
         records_by_cs_id = _records_by_cs_id(records, predicate=lambda _record: True)
-        device_ids = sorted(records_by_cs_id)
-        if not device_ids:
+        cs_device_ids = sorted(records_by_cs_id)
+        if not cs_device_ids:
             return [], {}
 
         try:
-            clusters = extract_inferred_clusters(client, device_ids)
+            clusters = extract_inferred_clusters(client, cs_device_ids)
         except PlatformOneApiError as exc:
             # Diode upsert cannot clear virtual_chassis when omitted, so a failed
             # fetch leaves prior NetBox memberships sticky until a later success.
@@ -328,7 +370,7 @@ class Backend(WorkerBackend):
     @staticmethod
     def _port_entities(
         client: PlatformOneClient,
-        records: list[dict],
+        records: list[DeviceRecord],
         policy_name: str,
     ) -> tuple[list[Entity], dict[str, dict[str, str]], dict[str, dict]]:
         """Fetch port/LAG + fabric tables for in-scope switches and map entities.
@@ -337,17 +379,17 @@ class Backend(WorkerBackend):
         Device primary IPs and ISIS/SPBM custom fields reuse the same switch
         fan-out.
         """
-        _switches, device_ids, device_names, device_meta = _fanout_context(
+        switches, cs_device_ids, names = _fanout_context(
             records,
-            predicate=lambda record: is_switch(record["asset"].get("function")),
+            predicate=lambda record: record.is_switch,
             policy_name=policy_name,
             kind="ports",
         )
-        if not device_ids:
+        if not cs_device_ids:
             return [], {}, {}
 
-        tables_by_device, failed_tables = extract_port_tables(client, device_ids, policy_name)
-        fabric_tables, fabric_failed = extract_fabric_tables(client, device_ids, policy_name)
+        tables_by_device, failed_tables = extract_port_tables(client, cs_device_ids, policy_name)
+        fabric_tables, fabric_failed = extract_fabric_tables(client, cs_device_ids, policy_name)
         failed_tables.extend(fabric_failed)
 
         fabric_by_cs_id: dict[str, dict] = {}
@@ -358,24 +400,15 @@ class Backend(WorkerBackend):
 
         entities: list[Entity] = []
         primary_ips_by_cs_id: dict[str, dict[str, str]] = {}
-        for device_id in device_ids:
-            tables = tables_by_device[device_id]
-            meta = device_meta[device_id]
-            primary = transform.primary_ips_from_tables(tables, asset_ip=meta.get("asset_ip"))
+        for cs_device_id in cs_device_ids:
+            tables = tables_by_device[cs_device_id]
+            record = switches[cs_device_id]
+            primary = transform.primary_ips_from_tables(tables, asset_ip=record.asset_ip)
             if primary:
-                primary_ips_by_cs_id[device_id] = primary
-            name = device_names.get(device_id)
-            if not name:
+                primary_ips_by_cs_id[cs_device_id] = primary
+            if cs_device_id not in names:
                 continue
-            entities.extend(
-                transform.ports_to_entities(
-                    tables,
-                    device=name,
-                    function=meta.get("function"),
-                    site_name=meta.get("site_name"),
-                    product_type=meta.get("product_type"),
-                ),
-            )
+            entities.extend(transform.ports_to_entities(tables, record=record))
         logger.info("Policy %s: mapped %d wired port entities", policy_name, len(entities))
         if fabric_by_cs_id:
             logger.info(
@@ -387,22 +420,25 @@ class Backend(WorkerBackend):
         return entities, primary_ips_by_cs_id, fabric_by_cs_id
 
     @staticmethod
-    def _radio_entities(client: PlatformOneClient, records: list[dict], policy_name: str) -> list[Entity]:
+    def _radio_entities(
+        client: PlatformOneClient,
+        records: list[DeviceRecord],
+        policy_name: str,
+    ) -> list[Entity]:
         """Fetch wireless/SSID tables for in-scope APs and map to Diode entities."""
-        _aps, device_ids, device_names, device_meta = _fanout_context(
+        aps, cs_device_ids, names = _fanout_context(
             records,
-            predicate=lambda record: is_ap(record["asset"].get("function")),
+            predicate=lambda record: record.is_ap,
             policy_name=policy_name,
             kind="radios",
         )
-        if not device_ids:
+        if not cs_device_ids:
             return []
 
-        tables_by_device, failed_tables = extract_wireless_tables(client, device_ids, policy_name)
+        tables_by_device, failed_tables = extract_wireless_tables(client, cs_device_ids, policy_name)
         entities = transform.radios_to_entities(
             tables_by_device,
-            device_names=device_names,
-            device_meta=device_meta,
+            records={cs_id: aps[cs_id] for cs_id in names},
         )
         logger.info("Policy %s: mapped %d wireless radio/WLAN entities", policy_name, len(entities))
         _log_failed_tables(policy_name, failed_tables, domain="wireless ")

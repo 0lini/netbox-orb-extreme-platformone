@@ -3,11 +3,17 @@
 from __future__ import annotations
 
 import ipaddress
+from typing import TYPE_CHECKING
 
 from netboxlabs.diode.sdk.ingester import Entity, Interface, IPAddress
 
 from .common import PROVENANCE_TAGS, _explicit_cidr, _interface_identity_kwargs
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 from .port_constants import VIRTUAL_INTERFACE_TYPE
+
+_IPV4_VERSION = 4
 
 
 def _mgmt_interface_ids(tables: dict[str, list[dict]]) -> set[str]:
@@ -21,27 +27,38 @@ def _mgmt_interface_ids(tables: dict[str, list[dict]]) -> set[str]:
         return set()
     ids: set[str] = set()
     for row in (*(tables.get("port_configs") or []), *(tables.get("port_states") or [])):
-        key = (str(row.get("asset_device_id") or ""), str(row.get("name") or ""))
+        port_key = (str(row.get("asset_device_id") or ""), str(row.get("name") or ""))
         interface_id = str(row.get("asset_interface_id") or "")
-        if interface_id and key in mgmt_ports:
+        if interface_id and port_key in mgmt_ports:
             ids.add(interface_id)
     return ids
 
 
-def _pick_primary_cidr(candidates: list[tuple[int, str]]) -> dict[str, str]:
-    """Keep the first CIDR per address family from ranked candidates."""
-    result: dict[str, str] = {}
-    for version, cidr in candidates:
-        key = "primary_ip4" if version == 4 else "primary_ip6"
-        result.setdefault(key, cidr)
-    return result
+_IpInterface = ipaddress.IPv4Interface | ipaddress.IPv6Interface
+_CidrRow = tuple[dict, str, _IpInterface]
 
 
-_CidrRow = tuple[dict, str, ipaddress.IPv4Interface | ipaddress.IPv6Interface]
+def _pick_primary_cidr(rows: list[_CidrRow], matches: Callable[[dict, _IpInterface], bool]) -> dict[str, str]:
+    """First matching CIDR per address family, in input order."""
+    picked: dict[str, str] = {}
+    for row, cidr, iface in rows:
+        if matches(row, iface):
+            field = "primary_ip4" if iface.version == _IPV4_VERSION else "primary_ip6"
+            picked.setdefault(field, cidr)
+    return picked
 
 
-def _ranked_ip_matches(rows: list[_CidrRow], predicate) -> list[tuple[int, str]]:
-    return [(iface.version, cidr) for row, cidr, iface in rows if predicate(row, iface)]
+def _parsed_address(value: str | None) -> ipaddress.IPv4Address | ipaddress.IPv6Address | None:
+    """Parse a bare host address, or None when absent or malformed.
+
+    Assets declares ``Device.ip_address`` as ``format: ipv4`` dotted decimal, so
+    a prefixed value is off-spec and simply fails to match — better than
+    guessing at a host half.
+    """
+    try:
+        return ipaddress.ip_address((value or "").strip())
+    except ValueError:
+        return None
 
 
 def primary_ips_from_tables(
@@ -53,51 +70,35 @@ def primary_ips_from_tables(
 
     Prefers rows with ``is_primary`` True, then IPs on ``management_port``
     interfaces, then an interface IP whose host matches Assets ``ip_address``.
-    Every candidate must have a real prefix (``mask_length`` / CIDR); bare
-    hosts are never padded with /32 or /128.
+    The first tier that matches anything wins outright; families are not mixed
+    across tiers. Every candidate must have a real prefix (``mask_length`` /
+    CIDR); bare hosts are never padded with /32 or /128.
     """
-    rows_with_cidr: list[tuple[dict, str, ipaddress.IPv4Interface | ipaddress.IPv6Interface]] = []
+    rows_with_cidr: list[_CidrRow] = []
     for row in tables.get("interface_ips") or []:
         # Require an explicit prefix from ConfigState (mask_length or inline /n);
         # never accept ip_interface's implicit /32 or /128 on a bare host.
         cidr = _interface_ip_cidr(row)
         if not cidr:
             continue
-        try:
-            iface = ipaddress.ip_interface(cidr)
-        except ValueError:
-            continue
-        rows_with_cidr.append((row, cidr, iface))
+        # `cidr` is already str(ip_interface(...)) from _explicit_cidr, so this
+        # parse cannot fail.
+        rows_with_cidr.append((row, cidr, ipaddress.ip_interface(cidr)))
 
     if not rows_with_cidr:
         return {}
 
-    ranked = _ranked_ip_matches(rows_with_cidr, lambda row, _iface: row.get("is_primary") is True)
-    if ranked:
-        return _pick_primary_cidr(ranked)
-
     mgmt_ids = _mgmt_interface_ids(tables)
-    if mgmt_ids:
-        ranked = _ranked_ip_matches(
-            rows_with_cidr,
-            lambda row, _iface: str(row.get("asset_interface_id") or "") in mgmt_ids,
-        )
-        if ranked:
-            return _pick_primary_cidr(ranked)
-
-    asset_host = (asset_ip or "").strip()
-    if asset_host and "/" in asset_host:
-        asset_host = asset_host.split("/", 1)[0]
-    if asset_host:
-        try:
-            asset_address = ipaddress.ip_address(asset_host)
-        except ValueError:
-            asset_address = None
-        if asset_address is not None:
-            ranked = _ranked_ip_matches(rows_with_cidr, lambda _row, iface: iface.ip == asset_address)
-            if ranked:
-                return _pick_primary_cidr(ranked)
-
+    asset_address = _parsed_address(asset_ip)
+    tiers: tuple[Callable[[dict, _IpInterface], bool], ...] = (
+        lambda row, _iface: row.get("is_primary") is True,
+        lambda row, _iface: str(row.get("asset_interface_id") or "") in mgmt_ids,
+        lambda _row, iface: asset_address is not None and iface.ip == asset_address,
+    )
+    for matches in tiers:
+        picked = _pick_primary_cidr(rows_with_cidr, matches)
+        if picked:
+            return picked
     return {}
 
 
@@ -150,8 +151,10 @@ def _orphan_ip_entities(
     emitted_keys: dict[str, str],
     interface_names: dict[str, str],
 ) -> list[Entity]:
-    """IPs on interfaces that got no Interface entity above (e.g. VLAN/SVI
-    interfaces, which appear in vlan_properties but not the port tables).
+    """Emit IPs for interfaces that got no Interface entity above.
+
+    Covers VLAN/SVI interfaces, which appear in vlan_properties but not in the
+    port tables.
 
     Emits a minimal Interface first so the IPAddress has a real assigned
     object, then the IP entities. ``type=virtual`` for these non-port rows
@@ -163,10 +166,10 @@ def _orphan_ip_entities(
     """
     entities: list[Entity] = []
     emitted_names: set[str] = set()
-    for key, rows in sorted(interface_ips.items()):
-        if key in emitted_keys:
+    for interface_id, rows in sorted(interface_ips.items()):
+        if interface_id in emitted_keys:
             continue
-        name = interface_names.get(key)
+        name = interface_names.get(interface_id)
         if not name:
             continue
         if name not in emitted_names:
@@ -177,7 +180,7 @@ def _orphan_ip_entities(
                             **_interface_identity_kwargs(
                                 device=device,
                                 name=name,
-                                interface_id=key or None,
+                                interface_id=interface_id or None,
                             ),
                             "type": VIRTUAL_INTERFACE_TYPE,
                         },
@@ -196,22 +199,25 @@ def _orphan_ip_entities(
     return entities
 
 
-def _interface_names_by_id(tables: dict[str, list[dict]]) -> dict[str, str]:
-    """Map asset_interface_id → interface name from port/LAG/VLAN rows.
+# Tables that carry an interface name, and the field they spell it with, in
+# preference order: port/LAG `name` first, then vlan-properties
+# `interface_name`. First non-empty name wins per id.
+_NAME_FIELD_BY_TABLE = {
+    "port_configs": "name",
+    "port_states": "name",
+    "lag_configs": "name",
+    "lag_states": "name",
+    "vlan_properties": "interface_name",
+}
 
-    Prefer port/LAG ``name``, then vlan-properties ``interface_name``. First
-    non-empty name wins so later tables do not rename an already-known id.
-    """
+
+def _interface_names_by_id(tables: dict[str, list[dict]]) -> dict[str, str]:
+    """Map asset_interface_id → interface name from port/LAG/VLAN rows."""
     names: dict[str, str] = {}
-    for key in ("port_configs", "port_states", "lag_configs", "lag_states"):
-        for row in tables.get(key) or []:
+    for table_key, name_field in _NAME_FIELD_BY_TABLE.items():
+        for row in tables.get(table_key) or []:
             interface_id = str(row.get("asset_interface_id") or "")
-            name = str(row.get("name") or "").strip()
+            name = str(row.get(name_field) or "").strip()
             if interface_id and name:
                 names.setdefault(interface_id, name)
-    for row in tables.get("vlan_properties") or []:
-        interface_id = str(row.get("asset_interface_id") or "")
-        name = str(row.get("interface_name") or "").strip()
-        if interface_id and name:
-            names.setdefault(interface_id, name)
     return names

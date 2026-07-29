@@ -6,11 +6,12 @@ import logging
 from typing import TYPE_CHECKING
 
 from orb_extreme_platformone.client import PlatformOneApiError, PlatformOneClient
+from orb_extreme_platformone.identity import DeviceRecord
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
+    from collections.abc import Callable, Iterable
 
-logger = logging.getLogger("orb_extreme_platformone.extract")
+logger = logging.getLogger(__name__)
 
 
 def extract_cs_devices(client: PlatformOneClient, assets: list[dict]) -> list[dict]:
@@ -26,7 +27,12 @@ def extract_cs_devices(client: PlatformOneClient, assets: list[dict]) -> list[di
     return list(client.retrieve("asset-device", {"serial_number": serials}))
 
 
-def index_unique(items: Iterable[dict], key_fn, *, label: str) -> dict:
+def index_unique(
+    items: Iterable[dict],
+    key_fn: Callable[[dict], str | None],
+    *,
+    label: str,
+) -> dict:
     """Build {key: item}, keeping the first on collision and warning."""
     index: dict = {}
     for item in items:
@@ -68,7 +74,11 @@ def correlate(assets: list[dict], cs_devices: list[dict]) -> dict[object, dict]:
     return matched
 
 
-def correlated_records(client: PlatformOneClient, assets: list[dict], policy_name: str) -> list[dict]:
+def correlated_records(
+    client: PlatformOneClient,
+    assets: list[dict],
+    policy_name: str,
+) -> list[DeviceRecord]:
     """Join each Assets device with its ConfigState identity + location.
 
     A ConfigState outage degrades to Assets-only data (flat site, no
@@ -110,11 +120,11 @@ def correlated_records(client: PlatformOneClient, assets: list[dict], policy_nam
         cs = cs_by_asset_id.get(asset_id) if asset_id is not None else None
         cs_device_id = str(cs["id"]) if cs and cs.get("id") else None
         records.append(
-            {
-                "asset": asset,
-                "cs_device_id": cs_device_id,
-                "cs_device": cs,
-                "location": locations.get(cs_device_id) if cs_device_id else None,
-            },
+            DeviceRecord(
+                asset=asset,
+                cs_device_id=cs_device_id,
+                cs_device=cs,
+                location=locations.get(cs_device_id) if cs_device_id else None,
+            ),
         )
     return records

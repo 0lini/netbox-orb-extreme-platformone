@@ -5,9 +5,10 @@ from __future__ import annotations
 import pytest
 
 from orb_extreme_platformone import transform
-from orb_extreme_platformone.backend import WIRELESS_TABLES
+from orb_extreme_platformone.catalog import WIRELESS_TABLES
+from orb_extreme_platformone.identity import DeviceRecord
 from tests.conftest import cf
-from tests.transform_helpers import _wireless_tables
+from tests.transform_helpers import _ap_records, _wireless_tables
 
 
 def test_wireless_entity_table_keys_match_backend_extracts() -> None:
@@ -35,7 +36,7 @@ def test_radios_to_entities_maps_native_rf_fields_and_wlans(stub_sdk) -> None:
         ],
     )
 
-    entities = transform.radios_to_entities(tables, device_names={"cs-ap-1": "ap-lobby"})
+    entities = transform.radios_to_entities(tables, records=_ap_records(cs_ap_1="ap-lobby"))
 
     wlans = {
         e._kw["wireless_lan"]._kw["ssid"]: e._kw["wireless_lan"]._kw
@@ -76,7 +77,9 @@ def test_radios_to_entities_leaves_unverified_rf_codes_unset(stub_sdk) -> None:
         },
     )
 
-    radio = transform.radios_to_entities(tables, device_names={"cs-ap-1": "ap-lobby"})[0]._kw["interface"]._kw
+    radio = (
+        transform.radios_to_entities(tables, records=_ap_records(cs_ap_1="ap-lobby"))[0]._kw["interface"]._kw
+    )
     # NetBox 4.6 accepts ieee802.11be; RF fields require a wireless type.
     assert radio["type"] == "ieee802.11be"
     assert radio["rf_role"] == "ap"
@@ -97,7 +100,7 @@ def test_radios_to_entities_omits_type_when_wireless_state_missing(stub_sdk) -> 
             {"asset_device_id": "cs-ap-1", "name": "Corp", "encryption": "PSK", "if_names": "wifi0"},
         ],
     )
-    entities = transform.radios_to_entities(tables, device_names={"cs-ap-1": "ap-lobby"})
+    entities = transform.radios_to_entities(tables, records=_ap_records(cs_ap_1="ap-lobby"))
     radio = next(e._kw["interface"]._kw for e in entities if "interface" in e._kw)
     assert "type" not in radio
     assert "rf_role" not in radio
@@ -120,7 +123,7 @@ def test_radios_to_entities_omits_type_when_state_lacks_radio_mode(stub_sdk) -> 
     )
     radio = next(
         e._kw["interface"]._kw
-        for e in transform.radios_to_entities(tables, device_names={"cs-ap-1": "ap-lobby"})
+        for e in transform.radios_to_entities(tables, records=_ap_records(cs_ap_1="ap-lobby"))
         if "interface" in e._kw
     )
     assert "type" not in radio
@@ -150,11 +153,11 @@ def test_radios_to_entities_warns_on_duplicate_wireless_config(stub_sdk, caplog)
     )
     base["cs-ap-1"]["wireless_interfaces"] = [first, second]
 
-    entities = transform.radios_to_entities(base, device_names={"cs-ap-1": "ap-lobby"})
+    entities = transform.radios_to_entities(base, records=_ap_records(cs_ap_1="ap-lobby"))
 
     radio = next(e._kw["interface"]._kw for e in entities if "interface" in e._kw)
     assert radio["enabled"] is True
-    assert "Multiple wireless_interfaces rows share join key" in caplog.text
+    assert "Multiple wireless_interfaces rows share asset_interface_id" in caplog.text
 
 
 def test_radios_to_entities_uses_first_nonempty_state_for_rf(stub_sdk) -> None:
@@ -185,7 +188,7 @@ def test_radios_to_entities_uses_first_nonempty_state_for_rf(stub_sdk) -> None:
     }
     radio = next(
         e._kw["interface"]._kw
-        for e in transform.radios_to_entities(tables, device_names={"cs-ap-1": "ap-lobby"})
+        for e in transform.radios_to_entities(tables, records=_ap_records(cs_ap_1="ap-lobby"))
         if "interface" in e._kw
     )
     assert radio["name"] == "wifi0"
@@ -199,13 +202,15 @@ def test_radios_to_entities_enriches_nested_device_ref(stub_sdk) -> None:
     radio = (
         transform.radios_to_entities(
             tables,
-            device_names={"cs-ap-1": "ap-lobby"},
-            device_meta={
-                "cs-ap-1": {
-                    "site_name": "HQ",
-                    "function": "AP",
-                    "product_type": "AP5050U",
-                },
+            records={
+                "cs-ap-1": DeviceRecord(
+                    asset={
+                        "host_name": "ap-lobby",
+                        "function": "AP",
+                        "product_type": "AP5050U",
+                        "site_name": "HQ",
+                    },
+                ),
             },
         )[0]
         ._kw["interface"]
@@ -220,7 +225,7 @@ def test_radios_to_entities_enriches_nested_device_ref(stub_sdk) -> None:
 
 def test_radios_to_entities_skips_devices_missing_from_device_names(stub_sdk) -> None:
     tables = _wireless_tables(interface_id="r1", enabled=None)
-    assert transform.radios_to_entities(tables, device_names={}) == []
+    assert transform.radios_to_entities(tables, records={}) == []
 
 
 @pytest.mark.parametrize(
@@ -240,7 +245,9 @@ def test_radios_to_entities_accepts_band_enum_style_labels(
     tables = _wireless_tables(
         state={"band": band, "channel": channel, "channel_width": 20, "radio_mode": radio_mode},
     )
-    radio = transform.radios_to_entities(tables, device_names={"cs-ap-1": "ap-lobby"})[0]._kw["interface"]._kw
+    radio = (
+        transform.radios_to_entities(tables, records=_ap_records(cs_ap_1="ap-lobby"))[0]._kw["interface"]._kw
+    )
     assert radio["rf_channel_frequency"] == expected_mhz
 
 
@@ -273,7 +280,9 @@ def test_radios_to_entities_maps_ssid_encryption_to_auth(
         },
     }
     wlan = (
-        transform.radios_to_entities(tables, device_names={"cs-ap-1": "ap-lobby"})[0]._kw["wireless_lan"]._kw
+        transform.radios_to_entities(tables, records=_ap_records(cs_ap_1="ap-lobby"))[0]
+        ._kw["wireless_lan"]
+        ._kw
     )
     assert wlan["auth_type"] == auth_type
     assert wlan["auth_cipher"] == auth_cipher
@@ -291,7 +300,9 @@ def test_radios_to_entities_omits_auth_and_status_when_unknown(stub_sdk) -> None
     }
 
     wlan = (
-        transform.radios_to_entities(tables, device_names={"cs-ap-1": "ap-lobby"})[0]._kw["wireless_lan"]._kw
+        transform.radios_to_entities(tables, records=_ap_records(cs_ap_1="ap-lobby"))[0]
+        ._kw["wireless_lan"]
+        ._kw
     )
     assert wlan["ssid"] == "Corp"
     assert "status" not in wlan
@@ -309,7 +320,9 @@ def test_radios_to_entities_omits_auth_for_unrecognized_encryption(stub_sdk) -> 
         },
     }
     wlan = (
-        transform.radios_to_entities(tables, device_names={"cs-ap-1": "ap-lobby"})[0]._kw["wireless_lan"]._kw
+        transform.radios_to_entities(tables, records=_ap_records(cs_ap_1="ap-lobby"))[0]
+        ._kw["wireless_lan"]
+        ._kw
     )
     assert wlan["status"] == "active"
     assert "auth_type" not in wlan
@@ -341,7 +354,7 @@ def test_radios_to_entities_merges_ssid_enabled_across_aps(stub_sdk, caplog) -> 
         },
     }
     wlan = (
-        transform.radios_to_entities(tables, device_names={"cs-ap-1": "ap-1", "cs-ap-2": "ap-2"})[0]
+        transform.radios_to_entities(tables, records=_ap_records(cs_ap_1="ap-1", cs_ap_2="ap-2"))[0]
         ._kw["wireless_lan"]
         ._kw
     )

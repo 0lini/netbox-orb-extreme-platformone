@@ -4,8 +4,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from orb_extreme_platformone.catalog import INTERFACE_ID_TABLES, PORT_TABLES
+from orb_extreme_platformone.client import CONFIGSTATE_FILTER_CHUNK_SIZE
+
 from .retrieve import extract_device_table_buckets, retrieve_ok
-from .tables import INTERFACE_ID_TABLES, PORT_TABLES
 
 if TYPE_CHECKING:
     from orb_extreme_platformone.client import PlatformOneClient
@@ -27,8 +29,8 @@ def collect_interface_ids(
     """
     interface_to_device: dict[str, str] = {}
     for device_id, tables in tables_by_device.items():
-        for key in _INTERFACE_ID_SOURCE_KEYS:
-            for row in tables.get(key) or []:
+        for table_key in _INTERFACE_ID_SOURCE_KEYS:
+            for row in tables.get(table_key) or []:
                 interface_id = str(row.get("asset_interface_id") or "")
                 if interface_id:
                     interface_to_device.setdefault(interface_id, device_id)
@@ -46,20 +48,34 @@ def attach_interface_id_tables(
     ``retrieve-asset-interface-ip-address`` has no device filter; rows are
     bucketed back onto devices via the interface→device map from port/LAG/
     VLAN/PoE rows.
+
+    The UUID list spans every in-scope switch, so it is chunked here rather
+    than inside ``client.retrieve``: chunking at this level lets the chunks run
+    concurrently. Doing it in the client walks them one at a time, which on a
+    large estate is the single biggest wall-clock cost of a tick.
     """
     interface_to_device = collect_interface_ids(tables_by_device)
     for tables in tables_by_device.values():
-        for key in INTERFACE_ID_TABLES:
-            tables.setdefault(key, [])
+        for table_key in INTERFACE_ID_TABLES:
+            tables.setdefault(table_key, [])
     if not interface_to_device:
         return
 
     interface_ids = sorted(interface_to_device)
-    jobs = [(table, {filter_field: interface_ids}) for table, filter_field in INTERFACE_ID_TABLES.values()]
-    for key, rows in retrieve_ok(
+    jobs: list[tuple[str, dict]] = []
+    contexts: list[str] = []
+    for table_key, (table, filter_field) in INTERFACE_ID_TABLES.items():
+        for start in range(0, len(interface_ids), CONFIGSTATE_FILTER_CHUNK_SIZE):
+            chunk = interface_ids[start : start + CONFIGSTATE_FILTER_CHUNK_SIZE]
+            jobs.append((table, {filter_field: chunk}))
+            contexts.append(table_key)
+
+    # retrieve_ok tolerates repeated context values and records per-chunk
+    # failures independently, so per-chunk degradation is preserved.
+    for table_key, rows in retrieve_ok(
         client,
         jobs,
-        list(INTERFACE_ID_TABLES),
+        contexts,
         policy_name=policy_name,
         failed_tables=failed_tables,
         degradation="ports sync without it",
@@ -68,12 +84,12 @@ def attach_interface_id_tables(
             interface_id = str(row.get("asset_interface_id") or "")
             device_id = interface_to_device.get(interface_id)
             if device_id and device_id in tables_by_device:
-                tables_by_device[device_id][key].append(row)
+                tables_by_device[device_id][table_key].append(row)
 
 
 def extract_port_tables(
     client: PlatformOneClient,
-    device_ids: list[str],
+    cs_device_ids: list[str],
     policy_name: str,
 ) -> tuple[dict[str, dict[str, list[dict]]], list[str]]:
     """Batched device-filtered port/LAG tables, then interface-UUID tables.
@@ -86,7 +102,7 @@ def extract_port_tables(
     """
     tables_by_device, failed_tables = extract_device_table_buckets(
         client,
-        device_ids,
+        cs_device_ids,
         PORT_TABLES,
         policy_name=policy_name,
         degradation="ports sync without it",

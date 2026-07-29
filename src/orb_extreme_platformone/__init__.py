@@ -12,7 +12,7 @@ if TYPE_CHECKING:
 __all__ = ["Backend", "__version__"]
 
 
-def __getattr__(name: str):
+def __getattr__(name: str) -> object:
     # Orb's load_class() importlib-loads this package and inspect.getmembers()
     # for a Backend subclass — keep the import lazy so `import
     # orb_extreme_platformone` / version metadata does not require the SDKs.

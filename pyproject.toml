@@ -91,7 +91,6 @@ markers = [
 [tool.coverage.run]
 branch = true
 source = ["orb_extreme_platformone"]
-omit = ["*/orb_extreme_platformone/__main__.py"]
 
 [tool.coverage.report]
 show_missing = true
@@ -119,18 +118,14 @@ ignore = [
     "PERF401",
     # Project does not require file-level copyright banners.
     "CPY001",
-    # Keep existing helper-style APIs without full annotation/docstring churn.
+    # Transform helpers take vendor JSON scalars of unknown type; annotating
+    # them `object` would say less than the docstrings already do. Callables,
+    # config resolvers and return types are annotated (see ANN201/ANN202).
     "ANN001",
     "ANN003",
-    "ANN202",
-    "D102",
-    "D103",
+    # Public docstring rules stay on; D107 is off because __init__ contracts
+    # are documented on the class.
     "D107",
-    "D205",
-    "D401",
-    "FBT001",
-    "FBT002",
-    "FBT003",
     # Existing docs intentionally use en dashes for numeric ranges.
     "RUF002",
     "RUF003",

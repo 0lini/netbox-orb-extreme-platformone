@@ -2,20 +2,21 @@
 
 from __future__ import annotations
 
-from netboxlabs.diode.sdk.ingester import Entity, Interface
+from netboxlabs.diode.sdk.ingester import Device, Entity, Interface
 
 from .common import _coerce_int, _interface_identity_kwargs, _normalized_mac
 from .ips import _ip_entities_for_interface
 from .port_constants import (
     _TYPE_BY_SPEED_AND_CONNECTOR,
+    LAG_INTERFACE_TYPE,
     OPER_STATE_UP,
     VERIFIED_CONFIG_DUPLEX,
     VERIFIED_OPER_DUPLEX,
     VERIFIED_OPER_SPEED_KBPS,
     VERIFIED_POE_CLASSIFICATION,
 )
-from .port_join import _first_row, _optional_first_row
-from .vlans import _vlan_fields, _vlan_records_for
+from .port_join import JoinedPortTables, _first_row, _optional_first_row
+from .vlans import _vlan_fields
 
 
 def _poe_mode(state: dict) -> str | None:
@@ -57,7 +58,7 @@ def _duplex(state: dict, config: dict) -> str | None:
 
 def _iface_base_kwargs(
     *,
-    device: object,
+    device: Device,
     name: str,
     interface_id: str | None,
     config: dict,
@@ -82,7 +83,7 @@ def _iface_base_kwargs(
 
 def _port_kwargs(
     *,
-    device: object,
+    device: Device,
     name: str,
     interface_id: str | None,
     config: dict,
@@ -136,14 +137,8 @@ def _port_kwargs(
 
 def _physical_port_entities(
     *,
-    device: object,
-    configs: dict[str, list[dict]],
-    states: dict[str, list[dict]],
-    vlans: dict[str, list[dict]],
-    capabilities: dict[tuple[str, str], dict],
-    poe_states: dict[str, list[dict]],
-    poe_configs: dict[str, list[dict]],
-    interface_ips: dict[str, list[dict]],
+    device: Device,
+    tables: JoinedPortTables,
     lag_names: set[str],
     lag_interface_ids: set[str],
     membership: dict[str, str],
@@ -152,14 +147,13 @@ def _physical_port_entities(
     entities: list[Entity] = []
     emitted_keys: dict[str, str] = {}
 
-    for key in sorted(set(configs) | set(states)):
-        config = _first_row(configs, key, table="port_configs")
-        state = _first_row(states, key, table="port_states")
+    for interface_id in sorted(set(tables.configs) | set(tables.states)):
+        config = _first_row(tables.configs, interface_id, table="port_configs")
+        state = _first_row(tables.states, interface_id, table="port_states")
         name = str(config.get("name") or state.get("name") or "")
         if not name:
             continue
-        # `key` is asset_interface_id (required on port config/state).
-        if key in lag_interface_ids:
+        if interface_id in lag_interface_ids:
             continue
         if name in lag_names:
             continue
@@ -167,24 +161,24 @@ def _physical_port_entities(
         kwargs = _port_kwargs(
             device=device,
             name=name,
-            interface_id=key,
+            interface_id=interface_id,
             config=config,
             state=state,
-            vlan_records=_vlan_records_for(vlans, interface_id=key),
-            capability=capabilities.get((port_device_id, name)),
-            poe_state=_optional_first_row(poe_states, key, table="poe_states"),
-            poe_config=_optional_first_row(poe_configs, key, table="poe_configs"),
+            vlan_records=tables.vlans.get(interface_id, []),
+            capability=tables.capabilities.get((port_device_id, name)),
+            poe_state=_optional_first_row(tables.poe_states, interface_id, table="poe_states"),
+            poe_config=_optional_first_row(tables.poe_configs, interface_id, table="poe_configs"),
         )
         lag_parent = membership.get(name)
         if lag_parent:
-            kwargs["lag"] = Interface(device=device, name=lag_parent, type="lag")
+            kwargs["lag"] = Interface(device=device, name=lag_parent, type=LAG_INTERFACE_TYPE)
         entities.append(Entity(interface=Interface(**kwargs)))
-        emitted_keys[key] = name
+        emitted_keys[interface_id] = name
         entities.extend(
             _ip_entities_for_interface(
                 device=device,
                 interface_name=name,
-                rows=interface_ips.get(key, []),
+                rows=tables.interface_ips.get(interface_id, []),
                 interface_type=kwargs.get("type"),
             ),
         )

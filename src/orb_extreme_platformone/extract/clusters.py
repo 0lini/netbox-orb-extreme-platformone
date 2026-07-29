@@ -4,15 +4,30 @@ from __future__ import annotations
 
 import logging
 
+from orb_extreme_platformone.catalog import CLUSTER_MEMBER_FILTERS
 from orb_extreme_platformone.client import PlatformOneApiError, PlatformOneClient
 
 from .retrieve import retrieve_parallel
-from .tables import CLUSTER_MEMBER_FILTERS
 
-logger = logging.getLogger("orb_extreme_platformone.extract")
+logger = logging.getLogger(__name__)
 
 
-def extract_inferred_clusters(client: PlatformOneClient, asset_device_ids: list[str]) -> list[dict]:
+def _remapped_cluster(cluster: dict, inferred_to_asset: dict[str, str]) -> tuple[str, dict] | None:
+    """Rewrite a cluster's member IDs from InferredDevice to AssetDevice UUIDs.
+
+    Returns ``(cluster_id, cluster)``, or None when the row is unusable: either
+    member out of scope (no remap) or no cluster id to dedupe both member-side
+    queries on.
+    """
+    one = inferred_to_asset.get(str(cluster.get("device_one_id") or ""))
+    two = inferred_to_asset.get(str(cluster.get("device_two_id") or ""))
+    cluster_id = str(cluster.get("id") or "")
+    if not one or not two or not cluster_id:
+        return None
+    return cluster_id, {**cluster, "device_one_id": one, "device_two_id": two}
+
+
+def extract_inferred_clusters(client: PlatformOneClient, cs_device_ids: list[str]) -> list[dict]:
     """Fetch InferredCluster rows for the given AssetDevice UUIDs.
 
     Filtering `retrieve-inferred-cluster` by AssetDevice UUIDs silently
@@ -25,11 +40,11 @@ def extract_inferred_clusters(client: PlatformOneClient, asset_device_ids: list[
     ``device_two_id`` still keeps rows from ``device_one_id`` (and vice versa)
     so a one-sided blip does not drop VirtualChassis for the whole tick.
     """
-    if not asset_device_ids:
+    if not cs_device_ids:
         return []
 
     inferred_to_asset: dict[str, str] = {}
-    for device in client.retrieve("inferred-device", {"asset_device_id": asset_device_ids}):
+    for device in client.retrieve("inferred-device", {"asset_device_id": cs_device_ids}):
         inferred_id = str(device.get("id") or "")
         asset_id = str(device.get("asset_device_id") or "")
         if inferred_id and asset_id:
@@ -54,24 +69,11 @@ def extract_inferred_clusters(client: PlatformOneClient, asset_device_ids: list[
                 exc,
             )
             continue
-        if clusters is None:
-            continue
-        for cluster in clusters:
-            one = str(cluster.get("device_one_id") or "")
-            two = str(cluster.get("device_two_id") or "")
-            one_asset = inferred_to_asset.get(one)
-            two_asset = inferred_to_asset.get(two)
-            # Skip when either member is out of scope (no AssetDevice remap).
-            if not one_asset or not two_asset:
-                continue
-            remapped = {
-                **cluster,
-                "device_one_id": one_asset,
-                "device_two_id": two_asset,
-            }
-            cluster_id = str(remapped.get("id") or "")
-            if cluster_id:
-                by_id[cluster_id] = remapped
+        for cluster in clusters or []:
+            remapped = _remapped_cluster(cluster, inferred_to_asset)
+            if remapped is not None:
+                cluster_id, row = remapped
+                by_id[cluster_id] = row
     if failures == len(CLUSTER_MEMBER_FILTERS):
         # Both sides failed — surface as a hard extract error so backend can
         # degrade the whole VC phase (same as the previous all-or-nothing path).

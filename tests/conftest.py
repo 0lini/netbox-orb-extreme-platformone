@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
+import importlib
+import inspect
+import pkgutil
+
 import pytest
+from netboxlabs.diode.sdk import ingester as _ingester
 
 from orb_extreme_platformone import transform
 
@@ -59,9 +64,20 @@ VLAN_PROPERTIES = {
 
 
 class Rec:
-    """Records constructor kwargs so tests can assert on them without the real protobuf SDK."""
+    """Records constructor kwargs so tests can assert on them without the real protobuf SDK.
+
+    Rejects any kwarg the real Diode class would reject: the real classes are
+    protobuf-backed and raise TypeError on unknown fields, so a permissive stub
+    would green-light a transform that fails in production.
+    """
 
     def __init__(self, **kw) -> None:
+        real = getattr(_ingester, type(self).__name__, None)
+        if real is not None:
+            unknown = sorted(set(kw) - set(inspect.signature(real).parameters))
+            if unknown:
+                msg = f"{type(self).__name__} stub got kwargs the real Diode class rejects: {unknown}"
+                raise TypeError(msg)
         self.__dict__.update(kw)
         self._kw = kw
 
@@ -139,6 +155,18 @@ STUB_CLASSES = {
 }
 
 
+def _transform_modules() -> list:
+    """Every module in the transform package, discovered rather than listed.
+
+    Walking the package means a new transform module cannot be silently left
+    unstubbed the way a hand-maintained tuple allows.
+    """
+    modules = [transform]
+    for info in pkgutil.iter_modules(transform.__path__):
+        modules.append(importlib.import_module(f"{transform.__name__}.{info.name}"))
+    return modules
+
+
 @pytest.fixture
 def stub_sdk(monkeypatch):
     """Swap the real Diode SDK classes transform submodules imported for stubs.
@@ -147,30 +175,8 @@ def stub_sdk(monkeypatch):
     directly; these stand-ins record constructor kwargs on `._kw` instead, so
     tests can assert on the *shape* of what transform builds.
     """
-    import orb_extreme_platformone.transform.common as transform_common
-    import orb_extreme_platformone.transform.devices as transform_devices
-    import orb_extreme_platformone.transform.ips as transform_ips
-    import orb_extreme_platformone.transform.lags as transform_lags
-    import orb_extreme_platformone.transform.physical_ports as transform_physical_ports
-    import orb_extreme_platformone.transform.ports as transform_ports
-    import orb_extreme_platformone.transform.virtual_chassis as transform_vc
-    import orb_extreme_platformone.transform.vlans as transform_vlans
-    import orb_extreme_platformone.transform.wireless as transform_wireless
-
-    modules = (
-        transform,
-        transform_common,
-        transform_devices,
-        transform_ips,
-        transform_lags,
-        transform_physical_ports,
-        transform_ports,
-        transform_vlans,
-        transform_vc,
-        transform_wireless,
-    )
     for name, cls in STUB_CLASSES.items():
-        for mod in modules:
+        for mod in _transform_modules():
             # Only patch names the module actually binds (imports or defines).
             if name in mod.__dict__:
                 monkeypatch.setattr(mod, name, cls)

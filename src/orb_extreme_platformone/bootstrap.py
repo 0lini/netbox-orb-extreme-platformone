@@ -2,142 +2,160 @@
 
 Uses the NetBox REST API directly (not Diode) because field definitions are
 schema, not data. Skips gracefully if no NetBox credentials are configured.
+
+Failures surface as ``NetBoxApiError`` rather than a raw ``requests``
+exception, so the package presents one error taxonomy: this mirrors
+``PlatformOneApiError`` on the Platform ONE side.
 """
 
 from __future__ import annotations
 
 import requests
 
+from .http import ApiError, raise_for_response
+from .schema import (
+    CF_CLUSTER_ID,
+    CF_DEVICE_ID,
+    CF_INTERFACE_ID,
+    CF_ISIS_AREA,
+    CF_ISIS_SYSTEM_ID,
+    CF_SPBM_NICKNAME,
+    TAG_NAMES,
+)
 from .urls import require_https_url
 
-# Per-object-type Platform ONE correlation keys with `unique` enforced
-# (NetBox >= 3.7): two NetBox objects of the same type claiming the same
-# Platform ONE id is always a sync defect worth failing loudly on. The
-# ConfigState AssetDevice UUID stays an internal join key (re-correlated by
-# serial every tick) and is not stored on Device.
-CF_DEVICE_ID = "platformone_device_id"
-CF_INTERFACE_ID = "platformone_interface_id"
-CF_CLUSTER_ID = "platformone_cluster_id"
-# Fabric identity parameters (not unique — shared areas / nicknames are fine).
-CF_ISIS_AREA = "platformone_isis_area"
-CF_ISIS_SYSTEM_ID = "platformone_isis_system_id"
-CF_SPBM_NICKNAME = "platformone_spbm_nickname"
+# Correlation-key and tag names live in `schema` so the pure transform layer
+# can stamp them onto entities without importing this HTTP module. The
+# definitions below (types, descriptions, `unique` enforcement) stay here:
+# they are NetBox schema, and only bootstrap writes them.
+#
+# `unique` is enforced (NetBox >= 3.7) on the per-object-type correlation
+# keys: two NetBox objects of the same type claiming the same Platform ONE id
+# is always a sync defect worth failing loudly on. The ConfigState AssetDevice
+# UUID stays an internal join key (re-correlated by serial every tick) and is
+# not stored on Device.
+
+
+def _custom_field(
+    name: str,
+    label: str,
+    object_type: str,
+    description: str,
+    *,
+    unique: bool,
+) -> dict:
+    """One NetBox custom-field definition; every field this worker needs is text."""
+    return {
+        "name": name,
+        "label": label,
+        "type": "text",
+        "object_types": [object_type],
+        "description": description,
+        "filter_logic": "exact",
+        "unique": unique,
+    }
+
 
 CUSTOM_FIELDS = [
-    {
-        "name": CF_DEVICE_ID,
-        "label": "Platform ONE Device ID",
-        "type": "text",
-        "object_types": ["dcim.device"],
-        "description": (
-            "Immutable Extreme Platform ONE device id (Assets API device_id); "
-            "stable correlation key even if the device is renamed."
-        ),
-        "filter_logic": "exact",
-        "unique": True,
-    },
-    {
-        "name": CF_INTERFACE_ID,
-        "label": "Platform ONE Interface ID",
-        "type": "text",
-        "object_types": ["dcim.interface"],
-        "description": (
-            "Immutable Extreme Platform ONE interface UUID "
-            "(ConfigState asset_interface_id); stable correlation key even if "
-            "the port is renamed."
-        ),
-        "filter_logic": "exact",
-        "unique": True,
-    },
-    {
-        "name": CF_CLUSTER_ID,
-        "label": "Platform ONE Cluster ID",
-        "type": "text",
-        "object_types": ["dcim.virtualchassis"],
-        "description": (
-            "Immutable Extreme Platform ONE InferredCluster UUID "
-            "(ConfigState retrieve-inferred-cluster id); stable correlation "
-            "key even if peer names change."
-        ),
-        "filter_logic": "exact",
-        "unique": True,
-    },
-    {
-        "name": CF_ISIS_AREA,
-        "label": "Platform ONE ISIS Area",
-        "type": "text",
-        "object_types": ["dcim.device"],
-        "description": (
-            "ISIS area address from ConfigState "
-            "(manual_area_address, else area_name, else learned/default area)."
-        ),
-        "filter_logic": "exact",
-        "unique": False,
-    },
-    {
-        "name": CF_ISIS_SYSTEM_ID,
-        "label": "Platform ONE ISIS System ID",
-        "type": "text",
-        "object_types": ["dcim.device"],
-        "description": ("ISIS system id (sys_id) from ConfigState retrieve-asset-isis-global-config."),
-        "filter_logic": "exact",
-        "unique": False,
-    },
-    {
-        "name": CF_SPBM_NICKNAME,
-        "label": "Platform ONE SPBM Nickname",
-        "type": "text",
-        "object_types": ["dcim.device"],
-        "description": (
-            "SPBM node nickname from ConfigState retrieve-asset-spbm-instance "
-            "(node_nick_name), falling back to ISIS area_vnode_nickname."
-        ),
-        "filter_logic": "exact",
-        "unique": False,
-    },
+    _custom_field(
+        CF_DEVICE_ID,
+        "Platform ONE Device ID",
+        "dcim.device",
+        "Immutable Extreme Platform ONE device id (Assets API device_id); "
+        "stable correlation key even if the device is renamed.",
+        unique=True,
+    ),
+    _custom_field(
+        CF_INTERFACE_ID,
+        "Platform ONE Interface ID",
+        "dcim.interface",
+        "Immutable Extreme Platform ONE interface UUID (ConfigState "
+        "asset_interface_id); stable correlation key even if the port is renamed.",
+        unique=True,
+    ),
+    _custom_field(
+        CF_CLUSTER_ID,
+        "Platform ONE Cluster ID",
+        "dcim.virtualchassis",
+        "Immutable Extreme Platform ONE InferredCluster UUID (ConfigState "
+        "retrieve-inferred-cluster id); stable correlation key even if peer "
+        "names change.",
+        unique=True,
+    ),
+    _custom_field(
+        CF_ISIS_AREA,
+        "Platform ONE ISIS Area",
+        "dcim.device",
+        "ISIS area address from ConfigState "
+        "(manual_area_address, else area_name, else learned/default area).",
+        unique=False,
+    ),
+    _custom_field(
+        CF_ISIS_SYSTEM_ID,
+        "Platform ONE ISIS System ID",
+        "dcim.device",
+        "ISIS system id (sys_id) from ConfigState retrieve-asset-isis-global-config.",
+        unique=False,
+    ),
+    _custom_field(
+        CF_SPBM_NICKNAME,
+        "Platform ONE SPBM Nickname",
+        "dcim.device",
+        "SPBM node nickname from ConfigState retrieve-asset-spbm-instance "
+        "(node_nick_name), falling back to ISIS area_vnode_nickname.",
+        unique=False,
+    ),
 ]
+
+# Extreme Networks brand primary purple; `discovered` is neutral grey because
+# it marks provenance rather than a vendor.
+_EXTREME_PURPLE = "440099"
 
 TAGS = [
     {
-        "name": "extreme-networks",
-        "slug": "extreme-networks",
-        # Extreme Networks brand primary purple (#440099).
-        "color": "440099",
+        "name": TAG_NAMES[0],
+        "slug": TAG_NAMES[0],
+        "color": _EXTREME_PURPLE,
         "description": "Objects synced from Extreme Networks via netbox-orb-extreme-platformone.",
     },
     {
-        "name": "platform-one",
-        "slug": "platform-one",
-        # Same Extreme brand purple as extreme-networks (#440099).
-        "color": "440099",
+        "name": TAG_NAMES[1],
+        "slug": TAG_NAMES[1],
+        "color": _EXTREME_PURPLE,
         "description": "Objects synced from Extreme Platform ONE via netbox-orb-extreme-platformone.",
     },
     {
-        "name": "discovered",
-        "slug": "discovered",
-        # Neutral gray — provenance marker, not brand-colored.
+        "name": TAG_NAMES[2],
+        "slug": TAG_NAMES[2],
         "color": "9e9e9e",
         "description": "Objects created by automated discovery rather than manually.",
     },
 ]
 
 
+_REQUEST_TIMEOUT_SECONDS = 30
+
+
+class NetBoxApiError(ApiError):
+    """Raised on a failed NetBox REST call during schema bootstrap."""
+
+    upstream = "NetBox"
+
+
 def _headers(token: str) -> dict:
     return {"Authorization": f"Token {token}", "Content-Type": "application/json"}
 
 
-def _request(method: str, url: str, token: str, **kwargs):
+def _request(method: str, url: str, token: str, **kwargs) -> requests.Response:
     """NetBox REST call that never follows redirects (token must not leave origin)."""
-    kwargs.setdefault("timeout", 30)
+    kwargs.setdefault("timeout", _REQUEST_TIMEOUT_SECONDS)
     kwargs.setdefault("allow_redirects", False)
-    resp = requests.request(method, url, headers=_headers(token), **kwargs)
-    if 300 <= resp.status_code < 400:
-        msg = f"NetBox unexpected redirect {resp.status_code} for {url}"
-        raise requests.HTTPError(
-            msg,
-            response=resp,
-        )
-    resp.raise_for_status()
+    try:
+        resp = requests.request(method, url, headers=_headers(token), **kwargs)
+    except requests.RequestException as exc:
+        msg = f"NetBox request failed for {url}: {exc}"
+        raise NetBoxApiError(msg, path=url) from exc
+    raise_for_response(resp, path=url, error=NetBoxApiError)
     return resp
 
 

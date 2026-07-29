@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from orb_extreme_platformone.catalog import FABRIC_DEVICE_TABLES
+
 from .retrieve import extract_device_table_buckets
-from .tables import FABRIC_DEVICE_TABLES
 
 if TYPE_CHECKING:
     from orb_extreme_platformone.client import PlatformOneClient
@@ -13,7 +14,7 @@ if TYPE_CHECKING:
 
 def extract_fabric_tables(
     client: PlatformOneClient,
-    device_ids: list[str],
+    cs_device_ids: list[str],
     policy_name: str,
 ) -> tuple[dict[str, dict[str, list[dict]]], list[str]]:
     """Batched device-filtered ISIS/SPBM tables for fabric identity CFs.
@@ -23,7 +24,7 @@ def extract_fabric_tables(
     """
     return extract_device_table_buckets(
         client,
-        device_ids,
+        cs_device_ids,
         FABRIC_DEVICE_TABLES,
         policy_name=policy_name,
         degradation="fabric CF sync without it",

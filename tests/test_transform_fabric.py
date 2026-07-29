@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from orb_extreme_platformone import bootstrap, transform
+from orb_extreme_platformone.identity import DeviceRecord
 from orb_extreme_platformone.transform.fabric import device_fabric_custom_fields
 from tests.conftest import cf
 
@@ -69,8 +70,8 @@ def test_devices_to_entities_attaches_fabric_custom_fields(stub_sdk) -> None:
     )
     entities = transform.devices_to_entities(
         [
-            {
-                "asset": {
+            DeviceRecord(
+                asset={
                     "device_id": 42,
                     "host_name": "sw-idf1",
                     "serial_number": "SN1",
@@ -79,9 +80,9 @@ def test_devices_to_entities_attaches_fabric_custom_fields(stub_sdk) -> None:
                     "product_type": "5520-24X",
                     "is_connected": True,
                 },
-                "cs_device_id": "cs-uuid-42",
-                "location": {"site_name": "HQ"},
-            },
+                cs_device_id="cs-uuid-42",
+                location={"site_name": "HQ"},
+            ),
         ],
         fabric_by_cs_id={"cs-uuid-42": fabric},
     )

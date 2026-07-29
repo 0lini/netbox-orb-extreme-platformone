@@ -4,30 +4,15 @@ from __future__ import annotations
 
 from .common import _coerce_int, _compact_token
 
+# Only modes the substring fallback in `_radio_type` gets wrong need a table
+# entry: "11bg" and "11an" contain "11b"/"11a" but mean 11g/11n, so a plain
+# substring scan would pick the wrong standard. Everything else — "_11ax_5g",
+# "ieee802.11ac", "11ac" — the fallback already resolves correctly.
 _RADIO_TYPE_BY_MODE = {
-    "_11a": "ieee802.11a",
     "_11bg": "ieee802.11g",
     "_11an": "ieee802.11n",
-    "_11ng": "ieee802.11n",
-    "_11ac": "ieee802.11ac",
-    "_11ax_2g": "ieee802.11ax",
-    "_11ax_5g": "ieee802.11ax",
-    "_11ax_6g": "ieee802.11ax",
-    "11a": "ieee802.11a",
     "11bg": "ieee802.11g",
     "11an": "ieee802.11n",
-    "11ng": "ieee802.11n",
-    "11ac": "ieee802.11ac",
-    "11ax": "ieee802.11ax",
-    "11ax_2g": "ieee802.11ax",
-    "11ax_5g": "ieee802.11ax",
-    "11ax_6g": "ieee802.11ax",
-    "ieee802.11a": "ieee802.11a",
-    "ieee802.11b": "ieee802.11b",
-    "ieee802.11g": "ieee802.11g",
-    "ieee802.11n": "ieee802.11n",
-    "ieee802.11ac": "ieee802.11ac",
-    "ieee802.11ax": "ieee802.11ax",
 }
 
 # channel_width is an integer in ConfigState; only values that are already
@@ -41,27 +26,17 @@ def _channel_frequency_mhz(band: str | None, channel: int | None) -> float | Non
     Uses standard IEEE 802.11 channel-numbering formulas (not Extreme-specific):
     2.4 GHz = 2407 + 5*channel; 5 GHz = 5000 + 5*channel; 6 GHz = 5950 + 5*channel.
     """
-    if channel is None:
+    channel_number = _coerce_int(channel)
+    if channel_number is None or not band:
         return None
-    try:
-        channel_number = int(channel)
-    except (TypeError, ValueError):
-        return None
-    if not band:
-        return None
-    # Collapse separators so BAND_5_GHZ / "5 GHz" / "5g" all normalize alike.
-    # BAND_2_4_GHZ → "band24ghz"; match via "24g" substring (covers 24ghz / 24g).
+    # Collapse separators so BAND_5_GHZ, "5 GHz" and "5g" all normalize alike:
+    # BAND_2_4_GHZ -> "band24ghz", matched on the "24g" substring.
     normalized = _compact_token(band)
-    if "6g" in normalized or normalized in {"6", "band6"}:
+    if "6g" in normalized:
         offset = 5950.0
-    elif (
-        "2.4" in normalized
-        or "2,4" in normalized
-        or "24g" in normalized
-        or normalized in {"2g", "band24", "band2.4"}
-    ):
+    elif "24g" in normalized or "2.4" in normalized:
         offset = 2407.0
-    elif "5g" in normalized or normalized in {"5", "band5"}:
+    elif "5g" in normalized:
         offset = 5000.0
     else:
         return None
@@ -71,8 +46,8 @@ def _channel_frequency_mhz(band: str | None, channel: int | None) -> float | Non
 def _radio_type(radio_mode: str | None) -> str | None:
     if not radio_mode:
         return None
-    key = str(radio_mode).strip()
-    mapped = _RADIO_TYPE_BY_MODE.get(key) or _RADIO_TYPE_BY_MODE.get(key.casefold())
+    key = str(radio_mode).strip().casefold()
+    mapped = _RADIO_TYPE_BY_MODE.get(key)
     if mapped:
         return mapped
     compact = _compact_token(key, drop=" -.")

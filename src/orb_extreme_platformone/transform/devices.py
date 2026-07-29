@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from typing import TYPE_CHECKING
 
 from netboxlabs.diode.sdk.ingester import (
     Device,
@@ -13,21 +14,18 @@ from netboxlabs.diode.sdk.ingester import (
     VirtualChassis,
 )
 
-from orb_extreme_platformone.identity import (
-    asset_label,
-    device_name,
-    expand_location_paths,
-    platform_name,
-    resolve_location,
-)
+from orb_extreme_platformone.identity import DeviceRecord, expand_location_paths, platform_name
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 from .common import (
-    CF_CLUSTER_ID,
     CF_DEVICE_ID,
     MANUFACTURER,
     PROVENANCE_TAGS,
     _cf_text,
     _device_identity_fields,
+    _virtual_chassis_kwargs,
     logger,
 )
 
@@ -71,13 +69,13 @@ def _site_kwargs(site_name: str, coords: tuple[float | None, float | None] | Non
 
 
 def _device_kwargs(
-    asset: dict,
+    record: DeviceRecord,
     *,
-    site_name: str,
     location: Location | None,
     vc_membership: dict | None = None,
     fabric_fields: dict | None = None,
 ) -> dict:
+    asset = record.asset
     custom_fields: dict = {}
     if asset.get("device_id") is not None:
         custom_fields[CF_DEVICE_ID] = _cf_text(str(asset["device_id"]))
@@ -87,15 +85,10 @@ def _device_kwargs(
         "serial": asset.get("serial_number") or None,
         "custom_fields": custom_fields,
         "tags": PROVENANCE_TAGS,
-        **_device_identity_fields(
-            function=asset.get("function"),
-            product_type=asset.get("product_type"),
-            site_name=site_name,
-        ),
+        **_device_identity_fields(record),
     }
-    name = device_name(asset)
-    if name is not None:
-        kwargs["name"] = name
+    if record.name is not None:
+        kwargs["name"] = record.name
     status = _status_for(asset)
     if status is not None:
         kwargs["status"] = status
@@ -104,45 +97,41 @@ def _device_kwargs(
 
     # Assets product_type / os_version only — no ConfigState model_name /
     # firmware_version fallback.
-    platform = platform_name(asset.get("function"), asset.get("os_version"))
+    platform = platform_name(record.function, asset.get("os_version"))
     if platform:
         kwargs["platform"] = Platform(name=platform, manufacturer=MANUFACTURER)
     if vc_membership:
-        # Include platformone_cluster_id so Diode matches the same VC as the
-        # top-level entity (NetBox VirtualChassis.name is not unique).
-        vc_kwargs: dict = {"name": vc_membership["name"]}
-        cluster_id = vc_membership.get("cluster_id")
-        if cluster_id:
-            vc_kwargs["custom_fields"] = {CF_CLUSTER_ID: _cf_text(str(cluster_id))}
-        kwargs["virtual_chassis"] = VirtualChassis(**vc_kwargs)
+        kwargs["virtual_chassis"] = VirtualChassis(
+            **_virtual_chassis_kwargs(vc_membership["name"], vc_membership.get("cluster_id")),
+        )
         kwargs["vc_position"] = vc_membership["position"]
     return kwargs
 
 
-def _iter_scoped_devices(records: list[dict], *, site_scope: set[str] | None):
-    """Yield (record, site_name, location_path) for devices that pass scope.
+def _iter_scoped_devices(
+    records: list[DeviceRecord],
+    *,
+    site_scope: set[str] | None,
+) -> Iterator[tuple[DeviceRecord, str]]:
+    """Yield ``(record, site_name)`` for records that pass scope.
 
-    Single resolve_location pass used by both `scope_devices` and
-    `devices_to_entities`. Platform ONE assigns every device a site itself, so
-    a record without one is unexpected and skipped (with a warning). Site
-    matching is case-insensitive (policy ``hq`` matches ConfigState ``HQ``).
+    The site is yielded alongside because it is non-optional here and optional
+    on the record: Platform ONE assigns every device a site itself, so a record
+    without one is unexpected and skipped rather than given an invented
+    default. Site matching is case-insensitive (policy ``hq`` matches ``HQ``).
     """
     folded_scope = {site.casefold() for site in site_scope} if site_scope else None
     for record in records:
-        site_name, location_path = resolve_location(record.get("location"), record["asset"])
+        site_name = record.site_name
         if site_name is None:
-            asset = record["asset"]
-            logger.warning(
-                "Skipping device %s: Platform ONE reports no site for it",
-                asset_label(asset),
-            )
+            logger.warning("Skipping device %s: Platform ONE reports no site for it", record.label)
             continue
         if folded_scope and site_name.casefold() not in folded_scope:
             continue
-        yield record, site_name, location_path
+        yield record, site_name
 
 
-def scope_devices(records: list[dict], *, site_scope: set[str] | None) -> list[dict]:
+def scope_devices(records: list[DeviceRecord], *, site_scope: set[str] | None) -> list[DeviceRecord]:
     """Return the device records whose resolved site is in site_scope (all, if no scope).
 
     Ownership: the backend scopes once up front (port fan-out must match the
@@ -151,7 +140,7 @@ def scope_devices(records: list[dict], *, site_scope: set[str] | None) -> list[d
     that have not scoped yet may pass `site_scope` into `devices_to_entities`
     instead.
     """
-    return [record for record, _, _ in _iter_scoped_devices(records, site_scope=site_scope)]
+    return [record for record, _ in _iter_scoped_devices(records, site_scope=site_scope)]
 
 
 def _merge_site_coords(
@@ -178,16 +167,17 @@ def _merge_site_coords(
 
 
 def devices_to_entities(
-    records: list[dict],
+    records: list[DeviceRecord],
     *,
     site_scope: set[str] | None = None,
     virtual_chassis_entities: list[Entity] | None = None,
     vc_memberships: dict[str, dict] | None = None,
     fabric_by_cs_id: dict[str, dict] | None = None,
 ) -> list[Entity]:
-    """Map device records to Diode entities: one Site per distinct site, one
-    nested Location per Building/Floor level in use, Devices, then
-    VirtualChassis (if any).
+    """Map device records to Diode Site, Location, Device and VirtualChassis entities.
+
+    One Site per distinct site, one nested Location per Building/Floor level in
+    use, then Devices, then VirtualChassis (if any).
 
     When the caller has already run `scope_devices` (backend tick path), pass
     `site_scope=None` so this does not re-filter by site. When calling
@@ -207,19 +197,16 @@ def devices_to_entities(
     must land before master.
     """
     entities: list[Entity] = []
-    resolved: list[tuple[dict, str, list[str]]] = []
     site_names: set[str] = set()
     location_paths: set[tuple[str, tuple[str, ...]]] = set()
     site_coords: dict[str, tuple[float | None, float | None]] = {}
 
-    # One pass: filter (if site_scope set) + resolve. Does not call
-    # scope_devices separately (avoids a second filter pass inside transform).
-    for record, site_name, location_path in _iter_scoped_devices(records, site_scope=site_scope):
-        resolved.append((record, site_name, location_path))
+    scoped = list(_iter_scoped_devices(records, site_scope=site_scope))
+    for record, site_name in scoped:
         site_names.add(site_name)
-        _merge_site_coords(site_coords, site_name, record.get("location"))
-        if location_path:
-            location_paths.add((site_name, tuple(location_path)))
+        _merge_site_coords(site_coords, site_name, record.location)
+        if record.location_path:
+            location_paths.add((site_name, tuple(record.location_path)))
 
     for site_name in sorted(site_names):
         entities.append(Entity(site=Site(**_site_kwargs(site_name, site_coords.get(site_name)))))
@@ -233,19 +220,21 @@ def devices_to_entities(
         location_cache[(site_name, path)] = location
         entities.append(Entity(location=location))
 
-    for record, site_name, location_path in resolved:
-        location = location_cache.get((site_name, tuple(location_path))) if location_path else None
-        cs_device_id = record.get("cs_device_id")
-        membership = (vc_memberships or {}).get(cs_device_id) if cs_device_id else None
-        fabric_fields = (fabric_by_cs_id or {}).get(cs_device_id) if cs_device_id else None
-        kwargs = _device_kwargs(
-            record["asset"],
-            site_name=site_name,
-            location=location,
-            vc_membership=membership,
-            fabric_fields=fabric_fields,
+    for record, site_name in scoped:
+        path = tuple(record.location_path)
+        cs_device_id = record.cs_device_id
+        entities.append(
+            Entity(
+                device=Device(
+                    **_device_kwargs(
+                        record,
+                        location=location_cache.get((site_name, path)) if path else None,
+                        vc_membership=(vc_memberships or {}).get(cs_device_id) if cs_device_id else None,
+                        fabric_fields=(fabric_by_cs_id or {}).get(cs_device_id) if cs_device_id else None,
+                    ),
+                ),
+            ),
         )
-        entities.append(Entity(device=Device(**kwargs)))
 
     # After member Devices so NetBox accepts VirtualChassis.master on create.
     if virtual_chassis_entities:
@@ -255,7 +244,7 @@ def devices_to_entities(
 
 
 def primary_ip_device_entities(
-    records: list[dict],
+    records: list[DeviceRecord],
     *,
     primary_ips_by_cs_id: dict[str, dict[str, str]],
 ) -> list[Entity]:
@@ -270,28 +259,16 @@ def primary_ip_device_entities(
     if not primary_ips_by_cs_id:
         return []
     entities: list[Entity] = []
-    for record, site_name, _location_path in _iter_scoped_devices(records, site_scope=None):
-        cs_device_id = record.get("cs_device_id")
-        if not cs_device_id:
-            continue
-        primary_ips = primary_ips_by_cs_id.get(cs_device_id)
-        if not primary_ips:
-            continue
-        asset = record["asset"]
-        name = device_name(asset)
-        if name is None:
+    for record, _site_name in _iter_scoped_devices(records, site_scope=None):
+        primary_ips = primary_ips_by_cs_id.get(record.cs_device_id or "")
+        if not primary_ips or record.name is None:
             continue
         # Enough identity for Diode generate-diff to match the existing Device;
         # avoid re-asserting serial/tags/CFs here so a primary-IP failure cannot
         # wipe them again.
-        kwargs: dict = {
-            "name": name,
-            **_device_identity_fields(
-                function=asset.get("function"),
-                product_type=asset.get("product_type"),
-                site_name=site_name,
+        entities.append(
+            Entity(
+                device=Device(name=record.name, **_device_identity_fields(record), **primary_ips),
             ),
-            **primary_ips,
-        }
-        entities.append(Entity(device=Device(**kwargs)))
+        )
     return entities

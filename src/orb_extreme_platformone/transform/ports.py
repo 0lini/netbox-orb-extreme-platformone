@@ -4,14 +4,14 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from orb_extreme_platformone.identity import SLASH_PORT_FUNCTIONS
+from orb_extreme_platformone.identity import SLASH_PORT_FUNCTIONS, DeviceRecord
 
 from .common import _device_ref
 from .ips import _interface_names_by_id, _orphan_ip_entities, primary_ips_from_tables
 from .lags import _lag_entities
 from .physical_ports import _physical_port_entities
 from .port_constants import PORT_ENTITY_TABLE_KEYS
-from .port_join import _by_key, _capabilities_by_port, _native_port_name_tables
+from .port_join import JoinedPortTables, _native_port_name_tables
 
 if TYPE_CHECKING:
     from netboxlabs.diode.sdk.ingester import Entity
@@ -23,14 +23,7 @@ __all__ = [
 ]
 
 
-def ports_to_entities(
-    tables: dict[str, list[dict]],
-    *,
-    device: str,
-    function: str | None = None,
-    site_name: str | None = None,
-    product_type: str | None = None,
-) -> list[Entity]:
+def ports_to_entities(tables: dict[str, list[dict]], *, record: DeviceRecord) -> list[Entity]:
     """Map one switch's ConfigState port + LAG + VLAN tables to Diode entities.
 
     `tables` holds the device's "port_configs", "port_states",
@@ -51,51 +44,26 @@ def ports_to_entities(
     Nested Interface ``device`` refs include site/role/device_type when
     known — Diode rejects name-only Device stubs during generate-diff.
 
-    `function` (the Assets OS family) rewrites ConfigState's slot:port
-    notation to the OS-native form (1:52 -> 1/52 on Fabric Engine / VOSS)
-    before any joining, so every emitted name and cross-reference agrees.
+    The record's OS family rewrites ConfigState's slot:port notation to the
+    OS-native form (1:52 -> 1/52 on Fabric Engine / VOSS) before any joining,
+    so every emitted name and cross-reference agrees. Callers must only pass
+    records that have a name (see backend._fanout_context).
     """
+    function = record.function
     if function and function.upper() in SLASH_PORT_FUNCTIONS:
         tables = _native_port_name_tables(tables, function)
-    device_ref = _device_ref(
-        name=device,
-        site_name=site_name,
-        function=function,
-        product_type=product_type,
-    )
-    configs = _by_key(tables.get("port_configs") or [])
-    states = _by_key(tables.get("port_states") or [])
-    vlan_rows = tables.get("vlan_properties") or []
-    vlans = _by_key(vlan_rows)
-    capabilities = _capabilities_by_port(tables.get("port_capabilities") or [])
-    poe_states = _by_key(tables.get("poe_states") or [])
-    poe_configs = _by_key(tables.get("poe_configs") or [])
-    interface_ips = _by_key(tables.get("interface_ips") or [])
-    lag_configs = tables.get("lag_configs") or []
-    lag_states = tables.get("lag_states") or []
+    device_ref = _device_ref(record)
+    joined = JoinedPortTables.from_tables(tables)
 
     lag_entities, lag_names, lag_interface_ids, membership, emitted_keys = _lag_entities(
         device=device_ref,
-        lag_configs=lag_configs,
-        lag_states=lag_states,
-        vlans=vlans,
-        poe_states=poe_states,
-        poe_configs=poe_configs,
-        interface_ips=interface_ips,
-        port_configs=configs,
-        port_states=states,
+        tables=joined,
     )
     entities = list(lag_entities)
 
     port_entities, port_keys = _physical_port_entities(
         device=device_ref,
-        configs=configs,
-        states=states,
-        vlans=vlans,
-        capabilities=capabilities,
-        poe_states=poe_states,
-        poe_configs=poe_configs,
-        interface_ips=interface_ips,
+        tables=joined,
         lag_names=lag_names,
         lag_interface_ids=lag_interface_ids,
         membership=membership,
@@ -106,7 +74,7 @@ def ports_to_entities(
     entities.extend(
         _orphan_ip_entities(
             device=device_ref,
-            interface_ips=interface_ips,
+            interface_ips=joined.interface_ips,
             emitted_keys=emitted_keys,
             interface_names=_interface_names_by_id(tables),
         ),

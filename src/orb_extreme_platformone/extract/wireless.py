@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from orb_extreme_platformone.catalog import WIRELESS_TABLES
+
 from .retrieve import extract_device_table_buckets
-from .tables import WIRELESS_TABLES
 
 if TYPE_CHECKING:
     from orb_extreme_platformone.client import PlatformOneClient
@@ -13,7 +14,7 @@ if TYPE_CHECKING:
 
 def extract_wireless_tables(
     client: PlatformOneClient,
-    device_ids: list[str],
+    cs_device_ids: list[str],
     policy_name: str,
 ) -> tuple[dict[str, dict[str, list[dict]]], list[str]]:
     """Batched wireless + SSID retrieves for the given AssetDevice UUIDs.
@@ -24,7 +25,7 @@ def extract_wireless_tables(
     """
     return extract_device_table_buckets(
         client,
-        device_ids,
+        cs_device_ids,
         WIRELESS_TABLES,
         policy_name=policy_name,
         degradation="wireless sync without it",

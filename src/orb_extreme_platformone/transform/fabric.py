@@ -9,11 +9,11 @@ from __future__ import annotations
 from .common import CF_ISIS_AREA, CF_ISIS_SYSTEM_ID, CF_SPBM_NICKNAME, _cf_text
 
 
-def _first_str(rows: list[dict], *keys: str) -> str | None:
-    """Return the first non-empty string for any of ``keys`` across rows."""
+def _first_non_empty_field(rows: list[dict], *field_names: str) -> str | None:
+    """First non-empty string value for any of ``field_names``, scanning rows in order."""
     for row in rows:
-        for key in keys:
-            value = row.get(key)
+        for field_name in field_names:
+            value = row.get(field_name)
             if value is None or value == "":
                 continue
             text = str(value).strip()
@@ -38,13 +38,16 @@ def device_fabric_custom_fields(tables: dict[str, list[dict]]) -> dict:
     states = tables.get("isis_global_states") or []
     instances = tables.get("spbm_instances") or []
 
-    area = _first_str(configs, "manual_area_address", "area_name") or _first_str(
+    area = _first_non_empty_field(configs, "manual_area_address", "area_name") or _first_non_empty_field(
         states,
         "default_area_address",
         "dynamically_learned_area",
     )
-    system_id = _first_str(configs, "sys_id")
-    nickname = _first_str(instances, "node_nick_name") or _first_str(configs, "area_vnode_nickname")
+    system_id = _first_non_empty_field(configs, "sys_id")
+    nickname = _first_non_empty_field(instances, "node_nick_name") or _first_non_empty_field(
+        configs,
+        "area_vnode_nickname",
+    )
 
     custom_fields: dict = {}
     if area is not None:

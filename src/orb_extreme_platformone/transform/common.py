@@ -13,72 +13,79 @@ from netboxlabs.diode.sdk.ingester import (
     Site,
 )
 
-from orb_extreme_platformone import bootstrap
-from orb_extreme_platformone.identity import device_type_model_for, role_for
+from orb_extreme_platformone.identity import DeviceRecord, device_type_model_for, role_for
+from orb_extreme_platformone.schema import (
+    CF_CLUSTER_ID,
+    CF_DEVICE_ID,
+    CF_INTERFACE_ID,
+    CF_ISIS_AREA,
+    CF_ISIS_SYSTEM_ID,
+    CF_SPBM_NICKNAME,
+    MANUFACTURER,
+    TAG_NAMES,
+)
 
-logger = logging.getLogger("orb_extreme_platformone.transform")
+logger = logging.getLogger(__name__)
 
-MANUFACTURER = "Extreme Networks"
+PROVENANCE_TAGS = list(TAG_NAMES)
 
-PROVENANCE_TAGS = [tag["name"] for tag in bootstrap.TAGS]
-
-CF_DEVICE_ID = bootstrap.CF_DEVICE_ID
-CF_INTERFACE_ID = bootstrap.CF_INTERFACE_ID
-CF_CLUSTER_ID = bootstrap.CF_CLUSTER_ID
-CF_ISIS_AREA = bootstrap.CF_ISIS_AREA
-CF_ISIS_SYSTEM_ID = bootstrap.CF_ISIS_SYSTEM_ID
-CF_SPBM_NICKNAME = bootstrap.CF_SPBM_NICKNAME
+__all__ = [
+    "CF_CLUSTER_ID",
+    "CF_DEVICE_ID",
+    "CF_INTERFACE_ID",
+    "CF_ISIS_AREA",
+    "CF_ISIS_SYSTEM_ID",
+    "CF_SPBM_NICKNAME",
+    "MANUFACTURER",
+    "PROVENANCE_TAGS",
+    "logger",
+]
 
 
 def _cf_text(value: str) -> CustomFieldValue:
     return CustomFieldValue(text=value)
 
 
-def _device_ref(
-    *,
-    name: str,
-    site_name: str | None = None,
-    function: str | None = None,
-    product_type: str | None = None,
-) -> Device:
+def _device_ref(record: DeviceRecord) -> Device:
     """Nested Device stub for Interface / IPAddress / VirtualChassis.master refs.
 
     Diode's generate-diff validates nested ``dcim.device`` against NetBox
     required fields (site, role, device_type) even when the device already
     exists. Name-only stubs therefore fail reconciliation (and for
     VirtualChassis, drop the whole chassis entity including its unique
-    ``platformone_cluster_id``). Mirror enough identity from the parent
-    Assets row to pass that check; top-level Device entities remain the
-    source of truth.
+    ``platformone_cluster_id``). Mirror enough identity from the record to pass
+    that check; top-level Device entities remain the source of truth.
     """
-    return Device(
-        name=name,
-        **_device_identity_fields(
-            function=function,
-            product_type=product_type,
-            site_name=site_name,
-        ),
-    )
+    return Device(name=record.name, **_device_identity_fields(record))
 
 
-def _device_identity_fields(
-    *,
-    function: str | None = None,
-    product_type: str | None = None,
-    site_name: str | None = None,
-) -> dict:
+def _device_identity_fields(record: DeviceRecord) -> dict:
     """Device identity fields needed by Diode nested refs and light updates."""
     kwargs: dict = {}
-    if site_name:
-        kwargs["site"] = Site(name=site_name)
-    role = role_for(function)
+    if record.site_name:
+        kwargs["site"] = Site(name=record.site_name)
+    role = role_for(record.function)
     if role:
         role_name, role_slug = role
         kwargs["role"] = DeviceRole(name=role_name, slug=role_slug)
-    model = device_type_model_for(product_type)
+    model = device_type_model_for(record.product_type)
     if model:
         kwargs["device_type"] = DeviceType(model=model, manufacturer=MANUFACTURER)
         kwargs["manufacturer"] = MANUFACTURER
+    return kwargs
+
+
+def _virtual_chassis_kwargs(name: str, cluster_id: str | None) -> dict:
+    """Name plus the cluster-id custom field NetBox actually matches chassis on.
+
+    NetBox does not unique ``VirtualChassis.name`` (verified 4.6), so identity
+    is ``platformone_cluster_id``. Both the top-level VirtualChassis entity and
+    the nested ref on each member device must carry it, or Diode reconciles
+    them to different chassis.
+    """
+    kwargs: dict = {"name": name}
+    if cluster_id:
+        kwargs["custom_fields"] = {CF_CLUSTER_ID: _cf_text(str(cluster_id))}
     return kwargs
 
 
@@ -90,17 +97,22 @@ def _interface_custom_fields(*, interface_id: str | None = None) -> dict:
 
 
 def _coerce_bool(value) -> bool | None:
-    """Accept JSON bools, 0/1, or common true/false strings; else None."""
+    """Return a JSON boolean, or None when the field is absent or not a bool.
+
+    ConfigState types these fields as booleans, so anything else is a contract
+    break worth seeing in the logs. Guessing at spellings would not make it
+    safe: callers read None as "unknown" and default admin state to up, so a
+    value we fail to recognise shows a disabled port as enabled in NetBox
+    either way — the warning is what makes that visible.
+    """
     if isinstance(value, bool):
         return value
-    if isinstance(value, (int, float)) and value in (0, 1):
-        return bool(value)
-    if isinstance(value, str):
-        text = value.strip().casefold()
-        if text in {"true", "1", "yes"}:
-            return True
-        if text in {"false", "0", "no"}:
-            return False
+    if value is not None:
+        logger.warning(
+            "Expected a boolean, got %r (%s); treating as unknown",
+            value,
+            type(value).__name__,
+        )
     return None
 
 
@@ -145,14 +157,16 @@ def _compact_token(value: str, drop: str = " _-") -> str:
 
 
 def _coerce_int(value) -> int | None:
-    """Accept JSON ints or digit-only strings; reject floats/bools/garbage."""
+    """Return a JSON integer, or None for anything else (bools included).
+
+    ConfigState declares every field this guards as ``integer``, and nothing in
+    the spec is serialised as a numeric string, so there is no string form to
+    accept. An off-spec value omits the field, which is visible in NetBox as
+    missing data rather than as a wrong value.
+    """
     if isinstance(value, bool):
         return None
-    if isinstance(value, int):
-        return value
-    if isinstance(value, str) and value.strip().isdigit():
-        return int(value.strip())
-    return None
+    return value if isinstance(value, int) else None
 
 
 def _explicit_cidr(raw, mask_length=None) -> str | None:

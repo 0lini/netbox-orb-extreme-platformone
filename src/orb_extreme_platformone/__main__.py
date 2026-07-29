@@ -7,6 +7,7 @@ pushed to Diode.
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 from datetime import timezone
@@ -18,7 +19,7 @@ from worker.models import Config, Policy
 from .backend import DEFAULT_CLASSIFICATION, Backend
 
 
-def _env_bool(name: str, default: bool = False) -> bool:
+def _env_bool(name: str, *, default: bool = False) -> bool:
     value = os.environ.get(name)
     if value is None:
         return default
@@ -43,7 +44,7 @@ def _load_env_file(path: str = ".env") -> None:
 def _standalone_config() -> dict:
     return {
         "package": "orb_extreme_platformone",
-        "BOOTSTRAP": _env_bool("BOOTSTRAP", False),
+        "BOOTSTRAP": _env_bool("BOOTSTRAP", default=False),
         "NETBOX_API_URL": os.environ.get("NETBOX_API_URL"),
         "NETBOX_API_TOKEN": os.environ.get("NETBOX_API_TOKEN"),
         "PLATFORMONE_API_TOKEN": os.environ.get("PLATFORMONE_API_TOKEN"),
@@ -53,7 +54,7 @@ def _standalone_config() -> dict:
     }
 
 
-def _quote_values(value):
+def _quote_values(value: object) -> object:
     """Render every scalar as a string so the JSON dry-run output quotes all values."""
     if isinstance(value, dict):
         return {key: _quote_values(item) for key, item in value.items()}
@@ -65,14 +66,16 @@ def _quote_values(value):
 
 
 def main() -> None:
+    """Run one standalone extract/transform pass and print the entities."""
     logging.basicConfig(level=logging.INFO)
     _load_env_file()
     policy = Policy(config=Config(**_standalone_config()), scope={"sites": ["*"]})
     backend = Backend()
     for entity in backend.run("standalone", policy):
         data = MessageToDict(entity, preserving_proto_field_name=True)
-        ts = entity.timestamp.ToDatetime(tzinfo=timezone.utc).astimezone()
-        data["timestamp"] = ts.isoformat(timespec="seconds")
+        timestamp = entity.timestamp.ToDatetime(tzinfo=timezone.utc).astimezone()
+        data["timestamp"] = timestamp.isoformat(timespec="seconds")
+        print(json.dumps(_quote_values(data), sort_keys=True))  # noqa: T201 — dry-run CLI writes to stdout
 
 
 if __name__ == "__main__":

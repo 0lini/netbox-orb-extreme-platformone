@@ -29,3 +29,7 @@ Optional: `pre-commit install` to run Ruff + ty on commit (see `.pre-commit-conf
 - Keep CI green (lint + ty with warnings-as-errors, Python 3.10–3.14 tests with
   coverage 90%, package smoke after lint/tests).
 - Update [`CHANGELOG.md`](CHANGELOG.md) under `[Unreleased]` for user-visible changes.
+
+The domain glossary for the two upstream device-id spaces is in
+[docs/naming-conventions.md](docs/naming-conventions.md) — read it before naming
+anything that holds an identifier.

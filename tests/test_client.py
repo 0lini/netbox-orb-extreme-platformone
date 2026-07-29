@@ -24,6 +24,20 @@ from orb_extreme_platformone.client import (
 ASSETS_URL = f"{DEFAULT_BASE_URL}/assets/v1/devices"
 
 
+def _distinct_chunks(calls) -> list[list[str]]:
+    """Filter-ID lists actually requested, deduped in order.
+
+    Transient failures are retried at the adapter, so a raw call count no
+    longer tells you how many chunks were attempted.
+    """
+    seen: list[list[str]] = []
+    for call in calls:
+        ids = json.loads(call.request.body)["asset_device_id"]
+        if ids not in seen:
+            seen.append(ids)
+    return seen
+
+
 def _client() -> PlatformOneClient:
     return PlatformOneClient(api_token="tok")
 
@@ -35,8 +49,10 @@ def test_client_requires_credentials() -> None:
 
 def test_client_accepts_username_password_without_token() -> None:
     client = PlatformOneClient(username="user", password="pass")
-    assert client._token_expiry == 0.0
-    assert "Authorization" not in client._headers
+    # Token state lives on the transport now; password mode starts expired so
+    # the first request logs in.
+    assert client._transport._token_expiry == 0.0
+    assert "Authorization" not in client._transport._headers
 
 
 def test_client_requires_https_base_url() -> None:
@@ -202,7 +218,8 @@ def test_retrieve_keeps_prior_chunk_rows_when_later_chunk_fails() -> None:
     rows = list(_client().retrieve("asset-port-state", {"asset_device_id": ids}))
 
     assert [r["name"] for r in rows] == ["a"]
-    assert len(responses.calls) == 2
+    # Count distinct chunks, not raw calls: the failing chunk is retried.
+    assert _distinct_chunks(responses.calls) == [chunk_a, chunk_b]
 
 
 @responses.activate
@@ -211,9 +228,9 @@ def test_retrieve_raises_when_every_filter_chunk_fails() -> None:
     ids = [f"id-{i}" for i in range(CONFIGSTATE_FILTER_CHUNK_SIZE + 1)]
     responses.add(responses.POST, url, json={"error": "nope"}, status=500)
 
-    with pytest.raises(PlatformOneApiError, match="500"):
+    with pytest.raises(PlatformOneApiError, match="all 2 filter chunks failed"):
         list(_client().retrieve("asset-port-state", {"asset_device_id": ids}))
-    assert len(responses.calls) == 2
+    assert len(_distinct_chunks(responses.calls)) == 2
 
 
 @responses.activate
@@ -296,9 +313,11 @@ def test_login_failure_raises_platform_one_api_error() -> None:
     responses.add(responses.POST, LOGIN_URL, json={"error": "bad creds"}, status=401)
 
     client = PlatformOneClient(username="user", password="pass")
-    with pytest.raises(PlatformOneApiError, match="login failed") as excinfo:
+    # One message shape for every failed call: "<upstream> API error <code> for <path>".
+    with pytest.raises(PlatformOneApiError, match=r"API error 401 for /login") as excinfo:
         list(client.get_devices())
     assert "bad creds" in str(excinfo.value)
+    assert excinfo.value.is_auth_failure
 
 
 @responses.activate
@@ -333,3 +352,84 @@ def test_invalid_json_raises_platform_one_api_error() -> None:
 
     with pytest.raises(PlatformOneApiError, match="invalid JSON"):
         list(_client().get_devices())
+
+
+# ---------------------------------------------------------------------------
+# Error-body redaction and malformed-response tolerance
+# ---------------------------------------------------------------------------
+
+
+def test_truncate_error_body_redacts_echoed_credentials() -> None:
+    """A gateway that echoes the request body must not leak the login password."""
+    body = '{"error": "bad creds for {"username": "admin", "password": "hunter2"}"}'
+    out = truncate_error_body(body, limit=500)
+    assert "hunter2" not in out
+    assert "[REDACTED]" in out
+
+
+@pytest.mark.parametrize(
+    "field",
+    ["password", "client_secret", "access_token", "refresh_token", "api_token", "authorization"],
+)
+def test_truncate_error_body_redacts_every_secret_field(field: str) -> None:
+    assert "s3cret" not in truncate_error_body(f'{{"{field}": "s3cret"}}', limit=500)
+
+
+@responses.activate
+def test_login_failure_does_not_leak_password_into_the_exception() -> None:
+    responses.add(
+        responses.POST,
+        f"{DEFAULT_BASE_URL}/login",
+        body='{"error": "rejected {"username": "admin", "password": "hunter2"}"}',
+        status=401,
+    )
+    client = PlatformOneClient(username="admin", password="hunter2")
+    with pytest.raises(PlatformOneApiError) as excinfo:
+        list(client.get_devices())
+    assert "hunter2" not in str(excinfo.value)
+
+
+@responses.activate
+def test_retrieve_rejects_non_list_records_as_api_error() -> None:
+    """A malformed 200 must degrade this table, not raise TypeError out of the thread."""
+    responses.add(
+        responses.POST,
+        f"{DEFAULT_BASE_URL}/configstate/v1/retrieve-asset-port-state",
+        json={"AssetPortState": 5, "Pagination": {"total_pages": 1}},
+        status=200,
+    )
+    client = PlatformOneClient(api_token="t")
+    with pytest.raises(PlatformOneApiError, match="non-list"):
+        list(client.retrieve("asset-port-state", {"asset_device_id": ["x"]}))
+
+
+@responses.activate
+def test_retrieve_tolerates_a_string_total_pages() -> None:
+    """`total_pages: "2"` used to raise TypeError comparing int >= str."""
+    responses.add(
+        responses.POST,
+        f"{DEFAULT_BASE_URL}/configstate/v1/retrieve-asset-port-state",
+        json={"AssetPortState": [{"a": 1}], "Pagination": {"total_pages": "2"}},
+        status=200,
+    )
+    responses.add(
+        responses.POST,
+        f"{DEFAULT_BASE_URL}/configstate/v1/retrieve-asset-port-state",
+        json={"AssetPortState": [{"a": 2}], "Pagination": {"total_pages": "2"}},
+        status=200,
+    )
+    client = PlatformOneClient(api_token="t")
+    assert list(client.retrieve("asset-port-state", {"asset_device_id": ["x"]})) == [{"a": 1}, {"a": 2}]
+
+
+@responses.activate
+def test_retrieve_tolerates_a_garbage_total_pages() -> None:
+    """An unparseable page count stops after the current page instead of raising."""
+    responses.add(
+        responses.POST,
+        f"{DEFAULT_BASE_URL}/configstate/v1/retrieve-asset-port-state",
+        json={"AssetPortState": [{"a": 1}], "Pagination": {"total_pages": None}},
+        status=200,
+    )
+    client = PlatformOneClient(api_token="t")
+    assert list(client.retrieve("asset-port-state", {"asset_device_id": ["x"]})) == [{"a": 1}]

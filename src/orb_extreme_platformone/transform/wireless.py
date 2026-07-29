@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from typing import TYPE_CHECKING
 
-from netboxlabs.diode.sdk.ingester import Entity, Interface, WirelessLAN
+from netboxlabs.diode.sdk.ingester import Device, Entity, Interface, WirelessLAN
 
-from orb_extreme_platformone.extract.tables import WIRELESS_TABLES
+from orb_extreme_platformone.catalog import WIRELESS_TABLES
 
 from .common import _coerce_int, _device_ref, _interface_identity_kwargs, _normalized_mac
-from .port_join import _by_key, _first_row
+from .port_join import _first_row, _group_by_interface_id
 from .wireless_auth import _ensure_wlan, _wlan_kwargs
 from .wireless_rf import (
     _channel_frequency_mhz,
@@ -22,28 +23,18 @@ from .wireless_rf import (
 WIRELESS_ENTITY_TABLE_KEYS = frozenset(WIRELESS_TABLES)
 
 
-def _split_if_names(value) -> list[str]:
-    """Normalize AssetSsid*.if_names (OpenAPI string) into interface names.
+if TYPE_CHECKING:
+    from orb_extreme_platformone.identity import DeviceRecord
 
-    Accepts a single name, a comma-separated string, or a list. No speculative
-    JSON / alternate-separator parsing.
+
+def _split_if_names(value: str | None) -> list[str]:
+    """Split ``AssetSsid*.if_names`` into interface names.
+
+    The spec declares it a single ``string``, so one radio and several arrive
+    in the same field with a comma between them. No list form to handle, and
+    no speculative JSON / alternate-separator parsing.
     """
-    if value is None:
-        return []
-    if isinstance(value, list):
-        return [str(item).strip() for item in value if str(item).strip()]
-    text = str(value).strip()
-    if not text:
-        return []
-    if "," in text:
-        return [part.strip() for part in text.split(",") if part.strip()]
-    return [text]
-
-
-def _wireless_radio_key(row: dict) -> str | None:
-    """Join key: required ``asset_interface_id`` on wireless-interface rows."""
-    interface_id = str(row.get("asset_interface_id") or "").strip()
-    return interface_id or None
+    return [name.strip() for name in str(value or "").split(",") if name.strip()]
 
 
 def _ssid_name(row: dict) -> str:
@@ -51,17 +42,17 @@ def _ssid_name(row: dict) -> str:
 
 
 def _primary_wireless_state(states: list[dict]) -> dict:
-    """First non-empty state row for radio identity / RF fields.
+    """First state row for radio identity / RF fields, or `{}` when there are none.
 
     Multiple state rows per ``asset_interface_id`` are valid (SSID names), but
     radio_mode / BSSID / power / channel live on a single primary state view.
     """
-    return next((row for row in states if row), {})
+    return states[0] if states else {}
 
 
 def _radio_interface_kwargs(
     *,
-    device,
+    device: Device,
     name: str,
     config: dict,
     state: dict,
@@ -106,29 +97,29 @@ def _link_ssid_radios(
     device_id: str,
     ssid: str,
     if_names,
-    name_to_key: dict[str, str],
+    name_to_interface_id: dict[str, str],
     ssids_by_radio: dict[tuple[str, str], list[str]],
 ) -> None:
+    """Attach an SSID to each radio its `if_names` list names."""
     for if_name in _split_if_names(if_names):
-        radio_key = name_to_key.get(if_name)
-        if radio_key and ssid not in ssids_by_radio[(device_id, radio_key)]:
-            ssids_by_radio[(device_id, radio_key)].append(ssid)
+        interface_id = name_to_interface_id.get(if_name)
+        if interface_id and ssid not in ssids_by_radio[(device_id, interface_id)]:
+            ssids_by_radio[(device_id, interface_id)].append(ssid)
 
 
 def radios_to_entities(
     tables_by_device: dict[str, dict[str, list[dict]]],
     *,
-    device_names: dict[str, str],
-    device_meta: dict[str, dict] | None = None,
+    records: dict[str, DeviceRecord],
 ) -> list[Entity]:
     """Map ConfigState wireless + SSID tables to Interface and WirelessLAN entities.
 
     `tables_by_device` maps ConfigState AssetDevice UUID -> wireless table
     buckets (`wireless_interfaces`, `wireless_states`, `ssid_configs`,
-    `ssid_states`). `device_names` maps the same UUID to the NetBox device
-    name already used for Device entities. Optional `device_meta` supplies
-    per-device ``site_name`` / ``function`` / ``product_type`` so nested
-    Interface ``device`` refs pass Diode generate-diff (same as switch ports).
+    `ssid_states`). `records` maps the same UUID to the device record, which
+    supplies both the NetBox name and the site/role/device_type a nested
+    Interface ``device`` ref needs to pass Diode generate-diff. Devices absent
+    from `records` are skipped.
 
     Each radio becomes an Interface with native RF fields (`rf_role`,
     `tx_power`, `rf_channel_frequency`, `rf_channel_width`, `type`,
@@ -141,54 +132,44 @@ def radios_to_entities(
     wlans: dict[str, dict] = {}
     ssids_by_radio: dict[tuple[str, str], list[str]] = defaultdict(list)
     radio_rows: dict[tuple[str, str], dict] = {}
-    device_meta = device_meta or {}
 
     for device_id, tables in tables_by_device.items():
-        if device_id not in device_names:
+        record = records.get(device_id)
+        if record is None:
             continue
-        configs = tables.get("wireless_interfaces") or []
-        states = tables.get("wireless_states") or []
-        ssid_configs = tables.get("ssid_configs") or []
-        ssid_states = tables.get("ssid_states") or []
+        configs = _group_by_interface_id(tables.get("wireless_interfaces") or [])
+        states = _group_by_interface_id(tables.get("wireless_states") or [])
 
-        radios: dict[str, dict] = {}
-        configs_by_key = _by_key(configs)
-        for key in configs_by_key:
-            radios.setdefault(key, {"config": {}, "states": []})["config"] = _first_row(
-                configs_by_key,
-                key,
-                table="wireless_interfaces",
-            )
-        for row in states:
-            key = _wireless_radio_key(row)
-            if not key:
-                continue
-            radios.setdefault(key, {"config": {}, "states": []})["states"].append(row)
-
-        name_to_key: dict[str, str] = {}
-        for key, radio in radios.items():
-            config = radio["config"]
-            state = _primary_wireless_state(radio["states"])
-            name = str(config.get("name") or state.get("name") or "").strip()
+        name_to_interface_id: dict[str, str] = {}
+        for interface_id in sorted(set(configs) | set(states)):
+            config = _first_row(configs, interface_id, table="wireless_interfaces")
+            state_rows = states.get(interface_id, [])
+            name = str(config.get("name") or _primary_wireless_state(state_rows).get("name") or "").strip()
             if not name:
                 continue
-            name_to_key[name] = key
-            radio_rows[(device_id, key)] = {
-                "device": device_names[device_id],
+            name_to_interface_id[name] = interface_id
+            radio_rows[(device_id, interface_id)] = {
+                "record": record,
                 "name": name,
                 "config": config,
-                "states": radio["states"],
+                "states": state_rows,
             }
-            for state_row in radio["states"]:
+            # A radio's own state rows name the SSIDs it is currently serving.
+            for state_row in state_rows:
                 ssid = str(state_row.get("ssid_name") or "").strip()
-                if ssid and ssid not in ssids_by_radio[(device_id, key)]:
-                    ssids_by_radio[(device_id, key)].append(ssid)
+                if ssid and ssid not in ssids_by_radio[(device_id, interface_id)]:
+                    ssids_by_radio[(device_id, interface_id)].append(ssid)
                     _ensure_wlan(wlans, ssid)
 
+        # `enabled` only exists on ssid-config rows and `encryption` only on
+        # ssid-state rows, so one pass over both covers each without either
+        # overwriting the other (_ensure_wlan ORs enabled, keeps first cipher).
+        ssid_configs = tables.get("ssid_configs") or []
+        ssid_states = tables.get("ssid_states") or []
         encryption_by_ssid = {
             _ssid_name(row): row.get("encryption") for row in ssid_states if _ssid_name(row)
         }
-        for row in ssid_configs:
+        for row in (*ssid_configs, *ssid_states):
             ssid = _ssid_name(row)
             if not ssid:
                 continue
@@ -202,19 +183,7 @@ def radios_to_entities(
                 device_id=device_id,
                 ssid=ssid,
                 if_names=row.get("if_names"),
-                name_to_key=name_to_key,
-                ssids_by_radio=ssids_by_radio,
-            )
-        for row in ssid_states:
-            ssid = _ssid_name(row)
-            if not ssid:
-                continue
-            _ensure_wlan(wlans, ssid, encryption=row.get("encryption"))
-            _link_ssid_radios(
-                device_id=device_id,
-                ssid=ssid,
-                if_names=row.get("if_names"),
-                name_to_key=name_to_key,
+                name_to_interface_id=name_to_interface_id,
                 ssids_by_radio=ssids_by_radio,
             )
 
@@ -228,21 +197,14 @@ def radios_to_entities(
     ]
     for (device_id, key), radio in sorted(
         radio_rows.items(),
-        key=lambda item: (item[1]["device"], item[1]["name"]),
+        key=lambda item: (item[1]["record"].name or "", item[1]["name"]),
     ):
         state = _primary_wireless_state(radio["states"])
-        meta = device_meta.get(device_id) or {}
-        device_ref = _device_ref(
-            name=radio["device"],
-            site_name=meta.get("site_name"),
-            function=meta.get("function"),
-            product_type=meta.get("product_type"),
-        )
         entities.append(
             Entity(
                 interface=Interface(
                     **_radio_interface_kwargs(
-                        device=device_ref,
+                        device=_device_ref(radio["record"]),
                         name=radio["name"],
                         config=radio["config"],
                         state=state,

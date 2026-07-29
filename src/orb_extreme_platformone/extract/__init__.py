@@ -2,14 +2,15 @@
 
 from __future__ import annotations
 
-from .correlate import correlate, correlated_records
-from .tables import (
+from orb_extreme_platformone.catalog import (
     CLUSTER_MEMBER_FILTERS,
     FABRIC_DEVICE_TABLES,
     INTERFACE_ID_TABLES,
     PORT_TABLES,
     WIRELESS_TABLES,
 )
+
+from .correlate import correlate, correlated_records
 
 __all__ = [
     "CLUSTER_MEMBER_FILTERS",
