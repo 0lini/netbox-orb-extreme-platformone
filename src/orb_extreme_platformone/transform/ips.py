@@ -73,11 +73,9 @@ def primary_ips_from_tables(
         cidr = _interface_ip_cidr(row)
         if not cidr:
             continue
-        try:
-            iface = ipaddress.ip_interface(cidr)
-        except ValueError:
-            continue
-        rows_with_cidr.append((row, cidr, iface))
+        # `cidr` is already str(ip_interface(...)) from _explicit_cidr, so this
+        # parse cannot fail.
+        rows_with_cidr.append((row, cidr, ipaddress.ip_interface(cidr)))
 
     if not rows_with_cidr:
         return {}

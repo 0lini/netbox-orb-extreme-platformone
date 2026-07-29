@@ -21,9 +21,7 @@ def _auth_from_encryption(encryption: str | None) -> tuple[str, str] | None:
         return "wep", "wep"
     if any(token in compact for token in ("8021x", "enterprise", "radius", "eap", "dot1x")):
         auth_type = "wpa-enterprise"
-    elif any(
-        token in compact for token in ("psk", "ppsk", "sae", "personal", "wpa2", "wpa3", "wpa")
-    ) or compact in {"typewpa", "wpaeap"}:
+    elif any(token in compact for token in ("psk", "ppsk", "sae", "personal", "wpa2", "wpa3", "wpa")):
         auth_type = "wpa-personal"
     else:
         return None
