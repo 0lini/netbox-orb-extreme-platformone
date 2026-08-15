@@ -24,6 +24,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   once so NetBox creates the new field definitions.
 
 ### Changed
+- Device role, switch port fan-out, and AP radio fan-out use Assets
+  `classification` only. `get_devices(ALL)` pulls each concrete class and
+  stamps it on the device; roles are a closed map (`SWITCH` → Switch,
+  `WIRELESS` → Wireless, …) with no freestyle pass-through from `function`.
+  `function` remains OS-only (NetBox Platform and port-name rewrite).
 - Device type models use Assets `product_type` as-is (no Fabric Engine
   prefix/suffix rewrite or underscore-to-hyphen conversion).
 - The pipeline is built around a `DeviceRecord` domain type instead of an
