@@ -36,7 +36,7 @@ def test_devices_to_entities_maps_the_assets_fields(stub_sdk) -> None:
     assert device["serial"] == "SN42"
     assert device["status"] == "active"
     assert device["site"]._kw == {"name": "Assets-Site"}
-    assert device["device_type"]._kw["model"] == "5320-48P-8XE-FabricEngine"
+    assert device["device_type"]._kw["model"] == "FabricEngine_5320_48P_8XE"
     assert device["device_type"]._kw["manufacturer"] == "Extreme Networks"
     assert device["platform"]._kw["name"] == "Fabric Engine 9.2.1.0"
     assert device["platform"]._kw["manufacturer"] == "Extreme Networks"

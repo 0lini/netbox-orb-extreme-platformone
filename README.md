@@ -393,13 +393,10 @@ alone; devices reporting neither assert no platform.
 
 ### Device type model mapping
 
-Assets prefixes `product_type` with `FabricEngine_` for switches running
-Fabric Engine OS (e.g. `FabricEngine_5320_48P_8XE`). The [NetBox Device Type
-Library](https://github.com/netbox-community/devicetype-library) places that
-marker at the end (`5320-48P-8XE-FabricEngine`), so
-`identity.device_type_model_for` moves the prefix to a suffix and converts
-underscores to hyphens. Values without the prefix pass through unchanged.
-When Assets omits `product_type`, no device type is asserted.
+Device type models are Assets `product_type` as reported — no rewriting of
+Fabric Engine prefixes or underscore/hyphen delimiters (e.g.
+`FabricEngine_5320_48P_8XE`, `X460-G2`, `AP_120`). When Assets omits
+`product_type`, no device type is asserted.
 
 ### Primary IP
 

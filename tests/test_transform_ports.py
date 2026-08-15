@@ -628,7 +628,7 @@ def test_ports_to_entities_nests_device_site_role_and_type(stub_sdk) -> None:
     assert device["name"] == "sw-idf1"
     assert device["site"]._kw["name"] == "Campus"
     assert device["role"]._kw["name"] == "Switch"
-    assert device["device_type"]._kw["model"] == "5320-48P-8XE-FabricEngine"
+    assert device["device_type"]._kw["model"] == "FabricEngine_5320_48P_8XE"
 
 
 def test_ports_to_entities_warns_on_conflicting_port_vlan(stub_sdk, caplog) -> None:

@@ -48,7 +48,7 @@ def test_virtual_chassis_to_entities_maps_inferred_cluster(stub_sdk) -> None:
     assert master["name"] == "sw-idf1"
     assert master["site"]._kw["name"] == "Assets-Site"
     assert master["role"]._kw["name"] == "Switch"
-    assert master["device_type"]._kw["model"] == "5320-48P-8XE-FabricEngine"
+    assert master["device_type"]._kw["model"] == "FabricEngine_5320_48P_8XE"
     assert "description" not in vc
     assert vc["tags"] == ["extreme-networks", "platform-one", "discovered"]
     assert cf(vc["custom_fields"]["platformone_cluster_id"]._kw) == "cluster-uuid-1"
@@ -184,4 +184,4 @@ def test_devices_to_entities_attaches_virtual_chassis_membership(stub_sdk) -> No
     assert master["name"] == "sw-idf1"
     assert master["site"]._kw["name"] == "Assets-Site"
     assert master["role"]._kw["name"] == "Switch"
-    assert master["device_type"]._kw["model"] == "5320-48P-8XE-FabricEngine"
+    assert master["device_type"]._kw["model"] == "FabricEngine_5320_48P_8XE"
