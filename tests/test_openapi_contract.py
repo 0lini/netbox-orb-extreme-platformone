@@ -76,6 +76,7 @@ def test_device_classifications_are_supported_assets_subset(assets_spec) -> None
     assert set(DEVICE_CLASSIFICATIONS) <= enum
     assert DEVICE_CLASSIFICATIONS == ("SWITCH", "WIRELESS")
 
+
 def test_configstate_tables_client_uses_still_exist(configstate_spec) -> None:
     paths = configstate_spec["paths"]
     used_tables = [

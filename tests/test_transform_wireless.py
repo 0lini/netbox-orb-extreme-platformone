@@ -203,7 +203,7 @@ def test_radios_to_entities_enriches_nested_device_ref(stub_sdk) -> None:
         transform.radios_to_entities(
             tables,
             records={
-                "cs-ap-1":                 DeviceRecord(
+                "cs-ap-1": DeviceRecord(
                     asset={
                         "host_name": "ap-lobby",
                         "function": "AP",

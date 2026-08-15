@@ -32,7 +32,7 @@ def _ap_records(**names_by_cs_id):
     """
     return {
         cs_id.replace("_", "-"): DeviceRecord(
-            asset={"host_name": name, "function": "AP", "classification": "WIRELESS"}
+            asset={"host_name": name, "function": "AP", "classification": "WIRELESS"},
         )
         for cs_id, name in names_by_cs_id.items()
     }

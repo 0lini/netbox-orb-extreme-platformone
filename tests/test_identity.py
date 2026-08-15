@@ -46,10 +46,14 @@ def test_device_name_uses_hostname_only() -> None:
 
 
 def test_is_switch_and_is_ap_use_classification() -> None:
-    assert is_switch("SWITCH") and is_switch("switch")
-    assert not is_switch("WIRELESS") and not is_switch(None)
-    assert is_ap("WIRELESS") and is_ap("wireless")
-    assert not is_ap("SWITCH") and not is_ap(None)
+    assert is_switch("SWITCH")
+    assert is_switch("switch")
+    assert not is_switch("WIRELESS")
+    assert not is_switch(None)
+    assert is_ap("WIRELESS")
+    assert is_ap("wireless")
+    assert not is_ap("SWITCH")
+    assert not is_ap(None)
 
 
 def test_platform_name_combines_os_family_and_version_into_one_value() -> None:

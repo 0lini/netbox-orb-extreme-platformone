@@ -33,9 +33,7 @@ def _mock_assets(devices: list[dict]) -> None:
             matched = devices
         else:
             matched = [
-                device
-                for device in devices
-                if str(device.get("classification") or "").upper() == wanted
+                device for device in devices if str(device.get("classification") or "").upper() == wanted
             ]
         return (
             200,
@@ -46,7 +44,7 @@ def _mock_assets(devices: list[dict]) -> None:
                     "page": 1,
                     "total_pages": 1,
                     "total_count": len(matched),
-                }
+                },
             ),
         )
 
