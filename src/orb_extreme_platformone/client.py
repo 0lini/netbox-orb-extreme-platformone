@@ -32,6 +32,9 @@ from .http import (
 )
 from .identity import DEVICE_CLASSIFICATIONS
 
+# Policy / env values accepted by get_devices (ALL = fan-out over DEVICE_CLASSIFICATIONS).
+_SUPPORTED_DEVICE_CLASSIFICATIONS = frozenset({"ALL", *DEVICE_CLASSIFICATIONS})
+
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
 
@@ -160,15 +163,18 @@ class PlatformOneClient:
 
         Device rows do not include ``classification``, so each list call's
         filter value is stamped onto every yielded device. ``ALL`` fans out
-        into one pull per concrete ``DEVICE_CLASSIFICATIONS`` entry (SWITCH,
-        WIRELESS, …) so role / port / radio gating can rely on that stamp
-        alone — no freestyle mapping from ``function``.
+        into one pull per supported class (``SWITCH``, ``WIRELESS``) so role /
+        port / radio gating can rely on that stamp alone. Other Assets classes
+        are not synced.
         """
-        classes = (
-            DEVICE_CLASSIFICATIONS
-            if str(classification).strip().upper() == "ALL"
-            else (classification,)
-        )
+        requested = str(classification).strip().upper()
+        if requested not in _SUPPORTED_DEVICE_CLASSIFICATIONS:
+            msg = (
+                f"Unsupported classification {classification!r}; "
+                f"expected one of {sorted(_SUPPORTED_DEVICE_CLASSIFICATIONS)}"
+            )
+            raise ValueError(msg)
+        classes = DEVICE_CLASSIFICATIONS if requested == "ALL" else (requested,)
         for cls in classes:
             for device in self._paginate(
                 "/assets/v1/devices",

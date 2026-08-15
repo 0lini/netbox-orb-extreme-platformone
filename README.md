@@ -82,9 +82,10 @@ username/password login or a static API token):
   serial, MAC, model (`product_type`), OS version, connection state, flat
   site name, management IP, and OS `function` (Switch Engine, Fabric Engine,
   EXOS, VOSS, AP, …). Device class comes from the list `classification`
-  filter (SWITCH, WIRELESS, …): `ALL` fans out into one pull per class and
-  stamps that value on each device for DeviceRole and port/radio fan-out.
-  Roles are a closed map from classification (no freestyle pass-through).
+  filter (`SWITCH` / `WIRELESS` only): `ALL` fans out into one pull per class
+  and stamps that value on each device for DeviceRole and port/radio fan-out.
+  Roles are a closed map from those two classifications (no freestyle
+  pass-through).
 - **ConfigState API** (`POST /configstate/v1/retrieve-*`) — per-device
   configuration and state tables listed in the call phases below. Every
   filter field accepts a list, so each retrieve covers the in-scope device
@@ -189,7 +190,7 @@ Policy `config:` keys (see `agent.yaml` for a complete example):
 | Key | Description | Default |
 |-----|-------------|---------|
 | `BOOTSTRAP` | Run schema setup before the sync (first run only). | `false` |
-| `classification` | Assets device filter: `ALL`, `SWITCH`, `WIRELESS`, `ROUTER`, …. Port sync only runs for switch-OS devices regardless. | `ALL` |
+| `classification` | Assets device filter: `ALL` (SWITCH + WIRELESS), `SWITCH`, or `WIRELESS`. Port sync is SWITCH-only; radio sync is WIRELESS-only. | `ALL` |
 | `scope.sites` | Restrict the sync to specific resolved sites (case-insensitive); `["*"]` for all. | `["*"]` |
 
 Every credential key can be provided in the policy `config:` or as a
@@ -372,10 +373,9 @@ unexpected and skipped with a warning.
 
 Assets `classification` (stamped from the list filter) maps to a NetBox
 DeviceRole via a closed table: `SWITCH` → **Switch**, `WIRELESS` →
-**Wireless**, `SDWAN` → **SDWAN**, `ROUTER` → **Router**, `XIQ_SE` →
-**XIQ SE**, `APPLIANCE` → **Appliance**. There is no freestyle pass-through
-of other strings (including Assets `function`). `UNKNOWN` / `ALL` / missing
-/ unmapped values assert **no** role — never a static default (`network`,
+**Wireless**. Only those two classes are synced. There is no freestyle
+pass-through of other strings (including Assets `function`). Missing /
+unmapped values assert **no** role — never a static default (`network`,
 `unknown`, …). Diode treats `Device.role` as optional, so omitting it leaves
 role NetBox-owned (same Assurance posture as omitting `Interface.type` when
 the connector code is unverified). NetBox's UI still requires a role for

@@ -113,6 +113,12 @@ def test_get_devices_all_fans_out_and_stamps_classification() -> None:
 
 
 @responses.activate
+def test_get_devices_rejects_unsupported_classification() -> None:
+    with pytest.raises(ValueError, match="Unsupported classification"):
+        list(_client().get_devices(classification="ROUTER"))
+
+
+@responses.activate
 def test_get_devices_passes_a_custom_classification_through_and_stamps_it() -> None:
     responses.add(
         responses.POST,

@@ -22,28 +22,20 @@ PLATFORM_BY_FUNCTION = {
     "VOSS": "VOSS",
 }
 
-# Assets list-filter classifications (DeviceClassificationFilter minus ALL).
-# ``get_devices(classification="ALL")`` pulls each of these and stamps the
-# value onto every returned device — Device rows do not carry classification.
+# Assets classifications this worker syncs. ``get_devices(classification="ALL")``
+# pulls each of these and stamps the value onto every returned device — Device
+# rows do not carry classification. Other Assets classes (ROUTER, SDWAN, …)
+# are out of scope.
 DEVICE_CLASSIFICATIONS = (
-    "WIRELESS",
     "SWITCH",
-    "SDWAN",
-    "ROUTER",
-    "XIQ_SE",
-    "APPLIANCE",
-    "UNKNOWN",
+    "WIRELESS",
 )
 
-# Closed NetBox DeviceRole names for each Assets classification. No pass-
-# through of free-form strings; UNKNOWN (and anything else) asserts no role.
+# Closed NetBox DeviceRole names for each supported Assets classification.
+# No pass-through of free-form strings; anything else asserts no role.
 ROLE_BY_CLASSIFICATION = {
     "SWITCH": "Switch",
     "WIRELESS": "Wireless",
-    "SDWAN": "SDWAN",
-    "ROUTER": "Router",
-    "XIQ_SE": "XIQ SE",
-    "APPLIANCE": "Appliance",
 }
 
 # Gates the per-switch ConfigState port sync in backend.py.
@@ -121,8 +113,8 @@ def role_for(classification: str | None) -> tuple[str, str] | None:
     """Map Assets ``classification`` to a NetBox DeviceRole (name, slug).
 
     Only the closed ``ROLE_BY_CLASSIFICATION`` map is used — no freestyle
-    pass-through of other strings. UNKNOWN / ALL / empty / unmapped values
-    assert no role (never invent ``network``, ``unknown``, …).
+    pass-through of other strings. Empty / unmapped values assert no role
+    (never invent ``network``, ``unknown``, …).
     """
     if not classification or not str(classification).strip():
         return None
