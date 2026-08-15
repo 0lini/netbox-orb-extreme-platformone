@@ -129,7 +129,7 @@ def device_type_model_for(product_type: str | None) -> str | None:
 
     Assets prefixes product_type with "FabricEngine_" for Fabric Engine
     switches (e.g. "FabricEngine_5320_48P_8XE"); the Device Type Library
-    puts the marker at the end with hyphens ("5320-48P-8XE-FabricEngine").
+    keeps that marker first with hyphens ("FabricEngine-5320-48P-8XE").
     Values without the prefix are passed through unchanged rather than
     guessed at.
     """
@@ -137,7 +137,7 @@ def device_type_model_for(product_type: str | None) -> str | None:
         return None
     if product_type.startswith(_FABRIC_ENGINE_PREFIX):
         model = product_type[len(_FABRIC_ENGINE_PREFIX) :].replace("_", "-")
-        return f"{model}-FabricEngine"
+        return f"FabricEngine-{model}"
     return product_type
 
 
