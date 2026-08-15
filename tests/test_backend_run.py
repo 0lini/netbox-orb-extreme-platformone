@@ -528,6 +528,7 @@ def test_run_maps_ap_radios_and_wlans() -> None:
         "mac_address": "aabbccddee99",
         "product_type": "AP5050",
         "function": "AP",
+        "classification": "WIRELESS",
         "os_version": "10.7.0",
         "is_connected": True,
         "ip_address": "10.0.0.99",
@@ -591,7 +592,7 @@ def test_run_maps_ap_radios_and_wlans() -> None:
     radios = [e.interface for e in entities if e.HasField("interface")]
     devices = [e.device for e in entities if e.HasField("device")]
     assert [d.name for d in devices] == ["ap-lobby"]
-    assert devices[0].role.name == "Wireless AP"
+    assert devices[0].role.name == "Wireless"
     assert [w.ssid for w in wlans] == ["Corp"]
     assert wlans[0].auth_type == "wpa-enterprise"
     assert wlans[0].status == "active"

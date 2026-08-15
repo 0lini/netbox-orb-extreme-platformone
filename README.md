@@ -35,7 +35,7 @@ Platform ONE (Assets + ConfigState)
 
 | Platform ONE source | NetBox objects |
 |---------------------|----------------|
-| Devices (Assets API) | `Device` — name (Assets `host_name` when present), serial, status (`active`/`offline` when `is_connected` is known; omitted when unknown), role (from Assets `function` when present; no static default), device type and manufacturer, platform (OS family + version), primary IPv4/IPv6 from ConfigState interface IPs (Assets `ip_address` is match-only), provenance tags, `platformone_device_id` custom field, plus fabric identity CFs when present (`platformone_isis_area`, `platformone_isis_system_id`, `platformone_spbm_nickname`) |
+| Devices (Assets API) | `Device` — name (Assets `host_name` when present), serial, status (`active`/`offline` when `is_connected` is known; omitted when unknown), role (closed map from Assets `classification`; no static default), device type and manufacturer, platform (OS family + version from `function`/`os_version`), primary IPv4/IPv6 from ConfigState interface IPs (Assets `ip_address` is match-only), provenance tags, `platformone_device_id` custom field, plus fabric identity CFs when present (`platformone_isis_area`, `platformone_isis_system_id`, `platformone_spbm_nickname`) |
 | Device locations (ConfigState) | `Site` (optional latitude/longitude) plus a nested `Location` chain (building → floor), falling back to the Assets API's flat site name |
 | Switch ports (ConfigState) | `Interface` — name, admin state (`enabled`), link state (`mark_connected`), speed/duplex (verified codes), `type` (verified speed/connector only; omitted when unknown — never invent `other`), description, MAC (uppercase), `mgmt_only`, `poe_mode` / `poe_type`, untagged/tagged VLANs with 802.1Q `mode`, `platformone_interface_id` custom field |
 | VLAN membership (ConfigState) | Interface `untagged_vlan` / `tagged_vlans` by `vid` with `name=str(vid)` (NetBox requires a name; switch-local names are not site-scoped, so VID is the stable placeholder; named VLAN sync via `retrieve-asset-vlan-config` is not used) |
@@ -80,10 +80,9 @@ username/password login or a static API token):
 
 - **Assets API** (`POST /assets/v1/devices`) — device inventory: hostname,
   serial, MAC, model (`product_type`), OS version, connection state, flat
-  site name, management IP, and the `function` value (Switch Engine, Fabric
-  Engine, EXOS, VOSS, AP, …) that gates the port sync and drives Device
-  role when present (switch OSes → Switch, AP → Wireless AP; never a static
-  default).
+  site name, management IP, and OS `function`. Device class is the list
+  `classification` (`SWITCH` / `WIRELESS`; `ALL` pulls both and stamps it)
+  used for DeviceRole and port/radio fan-out.
 - **ConfigState API** (`POST /configstate/v1/retrieve-*`) — per-device
   configuration and state tables listed in the call phases below. Every
   filter field accepts a list, so each retrieve covers the in-scope device
@@ -188,7 +187,7 @@ Policy `config:` keys (see `agent.yaml` for a complete example):
 | Key | Description | Default |
 |-----|-------------|---------|
 | `BOOTSTRAP` | Run schema setup before the sync (first run only). | `false` |
-| `classification` | Assets device filter: `ALL`, `SWITCH`, `WIRELESS`, `ROUTER`, …. Port sync only runs for switch-OS devices regardless. | `ALL` |
+| `classification` | Assets device filter: `ALL` (SWITCH + WIRELESS), `SWITCH`, or `WIRELESS`. Port sync is SWITCH-only; radio sync is WIRELESS-only. | `ALL` |
 | `scope.sites` | Restrict the sync to specific resolved sites (case-insensitive); `["*"]` for all. | `["*"]` |
 
 Every credential key can be provided in the policy `config:` or as a
@@ -369,17 +368,8 @@ unexpected and skipped with a warning.
 
 ### Device role
 
-Assets `function` maps to a NetBox DeviceRole when Platform ONE reports a
-real value. Switch OS families (`Fabric Engine`, `Switch Engine`, `EXOS`,
-`VOSS`) collapse to role **Switch** (`switch`); `AP` becomes **Wireless AP**
-(`wireless-ap`). Other non-empty functions pass through as the role name
-with a slugified form (e.g. `Router` → `router`). Empty / missing function,
-the Assets sentinel `Unknown`, or a value that cannot form a valid slug
-assert **no** role — there is no static default (`network`, `unknown`, …).
-Diode treats `Device.role` as optional, so omitting it leaves role
-NetBox-owned (same Assurance posture as omitting `Interface.type` when the
-connector code is unverified). NetBox's UI still requires a role for
-manually created devices; that does not force the worker to invent one.
+Assets `classification` maps to DeviceRole as title case: `SWITCH` →
+**Switch**, `WIRELESS` → **Wireless**. Anything else asserts no role.
 
 ### Platform and OS version
 
@@ -423,7 +413,7 @@ IPAddress apply, the primary IP lands on the next Orb tick.
 
 ### Switch ports
 
-Every in-scope device whose Assets `function` is a switch OS has its ports
+Every in-scope device whose Assets `classification` is `SWITCH` has its ports
 transformed from ConfigState tables joined on `asset_interface_id`
 (capabilities join on `(asset_device_id, port_name)`):
 
@@ -522,9 +512,9 @@ unchanged and independent.
 
 ### Wireless AP radios and WLANs
 
-Devices whose Assets `function` is `AP` (see `identity.is_ap`) get a batched
-ConfigState wireless sync alongside the switch-port path (which stays
-switch-only). Tables used:
+Devices whose Assets `classification` is `WIRELESS` (see `identity.is_ap`) get a
+batched ConfigState wireless sync alongside the switch-port path (which stays
+SWITCH-only). Tables used:
 
 - `retrieve-asset-wireless-interface` / `retrieve-asset-wireless-interface-state`
 - `retrieve-asset-ssid-config` / `retrieve-asset-ssid-state`

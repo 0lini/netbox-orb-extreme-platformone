@@ -77,6 +77,7 @@ def test_devices_to_entities_attaches_fabric_custom_fields(stub_sdk) -> None:
                     "serial_number": "SN1",
                     "site_name": "HQ",
                     "function": "Fabric Engine",
+                    "classification": "SWITCH",
                     "product_type": "5520-24X",
                     "is_connected": True,
                 },

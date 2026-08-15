@@ -24,6 +24,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   once so NetBox creates the new field definitions.
 
 ### Changed
+- Device role and port/radio fan-out use Assets ``classification``
+  (SWITCH / WIRELESS only; ``ALL`` pulls both). ``function`` stays OS-only.
 - Device type models use Assets `product_type` as-is (no Fabric Engine
   prefix/suffix rewrite or underscore-to-hyphen conversion).
 - The pipeline is built around a `DeviceRecord` domain type instead of an

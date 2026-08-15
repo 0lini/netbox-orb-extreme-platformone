@@ -68,6 +68,15 @@ def test_assets_filter_still_supports_classification(assets_spec) -> None:
     assert "classification" in schemas["ListDevicesRequestFilter"]["properties"]
 
 
+def test_device_classifications_are_supported_assets_subset(assets_spec) -> None:
+    """Fan-out list is SWITCH/WIRELESS only, still present in the Assets enum."""
+    from orb_extreme_platformone.identity import DEVICE_CLASSIFICATIONS
+
+    enum = set(assets_spec["components"]["schemas"]["DeviceClassificationFilter"]["enum"])
+    assert set(DEVICE_CLASSIFICATIONS) <= enum
+    assert DEVICE_CLASSIFICATIONS == ("SWITCH", "WIRELESS")
+
+
 def test_configstate_tables_client_uses_still_exist(configstate_spec) -> None:
     paths = configstate_spec["paths"]
     used_tables = [

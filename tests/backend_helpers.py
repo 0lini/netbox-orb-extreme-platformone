@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 import responses
 from worker.models import Config, Policy
 
@@ -17,12 +19,36 @@ def _cs_url(table: str) -> str:
 
 
 def _mock_assets(devices: list[dict]) -> None:
-    responses.add(
-        responses.POST,
-        ASSETS_URL,
-        json={"data": devices, "page": 1, "total_pages": 1, "total_count": len(devices)},
-        status=200,
-    )
+    """Mock Assets list calls, filtering by the request body's classification.
+
+    ``get_devices(classification="ALL")`` fans out into one POST per concrete
+    classification, so returning the full list for every request would stamp
+    the wrong class onto every device.
+    """
+
+    def _callback(request):
+        body = json.loads(request.body or b"{}")
+        wanted = str(body.get("classification") or "ALL").upper()
+        if wanted == "ALL":
+            matched = devices
+        else:
+            matched = [
+                device for device in devices if str(device.get("classification") or "").upper() == wanted
+            ]
+        return (
+            200,
+            {"Content-Type": "application/json"},
+            json.dumps(
+                {
+                    "data": matched,
+                    "page": 1,
+                    "total_pages": 1,
+                    "total_count": len(matched),
+                },
+            ),
+        )
+
+    responses.add_callback(responses.POST, ASSETS_URL, callback=_callback)
 
 
 def _mock_configstate(table: str, key: str, records: list[dict], status: int = 200) -> None:

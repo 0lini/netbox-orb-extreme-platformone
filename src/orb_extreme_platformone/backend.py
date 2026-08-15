@@ -48,7 +48,7 @@ except PackageNotFoundError:
     APP_VERSION = "0.2.0"
 # Sync every Assets device class by default (switches, APs, routers, ...);
 # narrow with the `classification` policy key. Port sync stays gated on
-# switch-OS devices regardless (see is_switch).
+# SWITCH classification (see is_switch); radio sync on WIRELESS (see is_ap).
 DEFAULT_CLASSIFICATION = "ALL"
 
 __all__ = ["APP_NAME", "APP_VERSION", "DEFAULT_CLASSIFICATION", "Backend"]

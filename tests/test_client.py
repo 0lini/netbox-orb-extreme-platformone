@@ -85,35 +85,46 @@ def test_configstate_response_key_matches_the_spec_schema_names(table, key) -> N
 
 
 @responses.activate
-def test_get_devices_paginates_and_sends_the_classification_filter() -> None:
-    for page, data in [(1, [{"device_id": 1}]), (2, [{"device_id": 2}])]:
+def test_get_devices_all_fans_out_and_stamps_classification() -> None:
+    from orb_extreme_platformone.identity import DEVICE_CLASSIFICATIONS
+
+    for cls in DEVICE_CLASSIFICATIONS:
         responses.add(
             responses.POST,
             ASSETS_URL,
             match=[
-                responses.matchers.query_param_matcher({"page": str(page), "limit": "500"}),
-                responses.matchers.json_params_matcher({"classification": "ALL"}),
+                responses.matchers.query_param_matcher({"page": "1", "limit": "500"}),
+                responses.matchers.json_params_matcher({"classification": cls}),
             ],
-            json={"data": data, "page": page, "total_pages": 2, "total_count": 2},
+            json={
+                "data": [{"device_id": cls}],
+                "page": 1,
+                "total_pages": 1,
+                "total_count": 1,
+            },
             status=200,
         )
 
     devices = list(_client().get_devices())
 
-    assert [d["device_id"] for d in devices] == [1, 2]
+    assert [(d["device_id"], d["classification"]) for d in devices] == [
+        (cls, cls) for cls in DEVICE_CLASSIFICATIONS
+    ]
 
 
 @responses.activate
-def test_get_devices_passes_a_custom_classification_through_verbatim() -> None:
+def test_get_devices_passes_a_custom_classification_through_and_stamps_it() -> None:
     responses.add(
         responses.POST,
         ASSETS_URL,
         match=[responses.matchers.json_params_matcher({"classification": "WIRELESS"})],
-        json={"data": [], "page": 1, "total_pages": 1, "total_count": 0},
+        json={"data": [{"device_id": 7}], "page": 1, "total_pages": 1, "total_count": 1},
         status=200,
     )
 
-    assert list(_client().get_devices(classification="WIRELESS")) == []
+    devices = list(_client().get_devices(classification="WIRELESS"))
+
+    assert devices == [{"device_id": 7, "classification": "WIRELESS"}]
 
 
 @responses.activate
@@ -275,7 +286,7 @@ def test_username_password_logs_in_before_api_calls() -> None:
     )
 
     client = PlatformOneClient(username="user", password="pass")
-    assert [d["device_id"] for d in client.get_devices()] == [1]
+    assert [d["device_id"] for d in client.get_devices(classification="SWITCH")] == [1]
     assert len(responses.calls) == 2
     assert responses.calls[0].request.url == LOGIN_URL
 
@@ -304,7 +315,7 @@ def test_username_password_relogs_in_once_on_401() -> None:
     )
 
     client = PlatformOneClient(username="user", password="pass")
-    assert [d["device_id"] for d in client.get_devices()] == [9]
+    assert [d["device_id"] for d in client.get_devices(classification="SWITCH")] == [9]
     assert len(responses.calls) == 4
 
 

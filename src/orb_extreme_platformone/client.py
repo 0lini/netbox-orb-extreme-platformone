@@ -30,6 +30,7 @@ from .http import (
     PlatformOneTransport,
     truncate_error_body,
 )
+from .identity import DEVICE_CLASSIFICATIONS
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
@@ -155,20 +156,24 @@ class PlatformOneClient:
             page += 1
 
     def get_devices(self, *, classification: str = "ALL", limit: int = ASSETS_PAGE_LIMIT) -> Iterator[dict]:
-        """Yield every Assets-API device of `classification`, across all pages.
+        """Yield Assets devices, stamping ``classification`` on each row.
 
-        `classification` (ALL, SWITCH, WIRELESS, ROUTER, ...) is passed
-        through verbatim so new upstream values need no client change.
+        Device rows omit classification, so ``ALL`` fans out to SWITCH then
+        WIRELESS and stamps the filter value used for each pull.
         """
-        yield from self._paginate(
-            "/assets/v1/devices",
-            page_param="page",
-            size_param="limit",
-            size=limit,
-            body={"classification": classification},
-            response_key="data",
-            total_pages=lambda payload, page: payload.get("total_pages") or page,
-        )
+        requested = str(classification).strip().upper() or "ALL"
+        classes = DEVICE_CLASSIFICATIONS if requested == "ALL" else (requested,)
+        for cls in classes:
+            for device in self._paginate(
+                "/assets/v1/devices",
+                page_param="page",
+                size_param="limit",
+                size=limit,
+                body={"classification": cls},
+                response_key="data",
+                total_pages=lambda payload, page: payload.get("total_pages") or page,
+            ):
+                yield {**device, "classification": cls}
 
     def _retrieve_pages(
         self,

@@ -207,6 +207,7 @@ def test_radios_to_entities_enriches_nested_device_ref(stub_sdk) -> None:
                     asset={
                         "host_name": "ap-lobby",
                         "function": "AP",
+                        "classification": "WIRELESS",
                         "product_type": "AP5050U",
                         "site_name": "HQ",
                     },
@@ -219,7 +220,7 @@ def test_radios_to_entities_enriches_nested_device_ref(stub_sdk) -> None:
     device = radio["device"]._kw
     assert device["name"] == "ap-lobby"
     assert device["site"]._kw["name"] == "HQ"
-    assert device["role"]._kw["name"] == "Wireless AP"
+    assert device["role"]._kw["name"] == "Wireless"
     assert device["device_type"]._kw["model"] == "AP5050U"
 
 
