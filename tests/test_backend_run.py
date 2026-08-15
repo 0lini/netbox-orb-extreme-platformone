@@ -358,7 +358,7 @@ def test_run_maps_inferred_cluster_to_virtual_chassis() -> None:
     assert chassis[0].master.name == "sw-idf1"
     assert chassis[0].master.site.name == "Assets-Site"
     assert chassis[0].master.role.name == "Switch"
-    assert chassis[0].master.device_type.model == "FabricEngine-5320-48P-8XE"
+    assert chassis[0].master.device_type.model == "FabricEngine_5320_48P_8XE"
     assert not chassis[0].description
     assert chassis[0].custom_fields["platformone_cluster_id"].text == "cluster-uuid-1"
 

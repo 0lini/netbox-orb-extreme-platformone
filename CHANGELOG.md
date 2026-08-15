@@ -24,8 +24,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   once so NetBox creates the new field definitions.
 
 ### Changed
-- Fabric Engine device type models are now `FabricEngine-<model>` (e.g.
-  `FabricEngine-5320-48P-8XE`) instead of `<model>-FabricEngine`.
+- Device type models use Assets `product_type` as-is (no Fabric Engine
+  prefix/suffix rewrite or underscore-to-hyphen conversion).
 - The pipeline is built around a `DeviceRecord` domain type instead of an
   untyped dict plus a parallel "meta" dict; name, site, OS family and location
   are derived properties resolved once. Entity output is unchanged.

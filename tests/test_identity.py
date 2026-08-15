@@ -93,11 +93,9 @@ def test_role_for_passes_unlisted_functions_through_slugified() -> None:
     assert slugify("!!!") == ""
 
 
-def test_device_type_model_for_keeps_the_fabric_engine_prefix() -> None:
-    assert device_type_model_for("FabricEngine_5320_48P_8XE") == "FabricEngine-5320-48P-8XE"
-
-
-def test_device_type_model_for_passes_unprefixed_codes_through() -> None:
+def test_device_type_model_for_passes_product_type_through() -> None:
+    assert device_type_model_for("FabricEngine_5320_48P_8XE") == "FabricEngine_5320_48P_8XE"
+    assert device_type_model_for("X460-G2") == "X460-G2"
     assert device_type_model_for("VSP_SWITCH") == "VSP_SWITCH"
     assert device_type_model_for(None) is None
 

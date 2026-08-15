@@ -121,23 +121,15 @@ def role_for(function: str | None) -> tuple[str, str] | None:
     return name, slug
 
 
-_FABRIC_ENGINE_PREFIX = "FabricEngine_"
-
-
 def device_type_model_for(product_type: str | None) -> str | None:
-    """Map an Assets product_type to its NetBox Device Type Library model name.
+    """Assets ``product_type`` as the NetBox device type model.
 
-    Assets prefixes product_type with "FabricEngine_" for Fabric Engine
-    switches (e.g. "FabricEngine_5320_48P_8XE"); the Device Type Library
-    keeps that marker first with hyphens ("FabricEngine-5320-48P-8XE").
-    Values without the prefix are passed through unchanged rather than
-    guessed at.
+    Passed through unchanged: Platform ONE already chooses the delimiter
+    (``FabricEngine_5320_48P_8XE``, ``X460-G2``, ``AP_120``, …). Empty or
+    missing values assert no device type.
     """
     if not product_type:
         return None
-    if product_type.startswith(_FABRIC_ENGINE_PREFIX):
-        model = product_type[len(_FABRIC_ENGINE_PREFIX) :].replace("_", "-")
-        return f"FabricEngine-{model}"
     return product_type
 
 
@@ -230,7 +222,7 @@ class DeviceRecord:
 
     @property
     def product_type(self) -> str | None:
-        """Assets `product_type`, mapped to a NetBox device-type model."""
+        """Assets `product_type` (NetBox device-type model, untransformed)."""
         return self.asset.get("product_type")
 
     @property
