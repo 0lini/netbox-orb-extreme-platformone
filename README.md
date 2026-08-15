@@ -80,12 +80,9 @@ username/password login or a static API token):
 
 - **Assets API** (`POST /assets/v1/devices`) — device inventory: hostname,
   serial, MAC, model (`product_type`), OS version, connection state, flat
-  site name, management IP, and OS `function` (Switch Engine, Fabric Engine,
-  EXOS, VOSS, AP, …). Device class comes from the list `classification`
-  filter (`SWITCH` / `WIRELESS` only): `ALL` fans out into one pull per class
-  and stamps that value on each device for DeviceRole and port/radio fan-out.
-  Roles are a closed map from those two classifications (no freestyle
-  pass-through).
+  site name, management IP, and OS `function`. Device class is the list
+  `classification` (`SWITCH` / `WIRELESS`; `ALL` pulls both and stamps it)
+  used for DeviceRole and port/radio fan-out.
 - **ConfigState API** (`POST /configstate/v1/retrieve-*`) — per-device
   configuration and state tables listed in the call phases below. Every
   filter field accepts a list, so each retrieve covers the in-scope device
