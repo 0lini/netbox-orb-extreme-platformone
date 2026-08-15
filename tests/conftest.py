@@ -22,6 +22,7 @@ SWITCH_ASSET = {
     "mac_address": "aabbccddeeff",
     "product_type": "FabricEngine_5320_48P_8XE",
     "function": "Fabric Engine",
+    "classification": "SWITCH",
     "os_version": "9.2.1.0",
     "is_connected": True,
     "ip_address": "10.0.0.2",

@@ -31,7 +31,9 @@ def _ap_records(**names_by_cs_id):
     fixtures are `cs-ap-1` style, so the underscores are translated back.
     """
     return {
-        cs_id.replace("_", "-"): DeviceRecord(asset={"host_name": name, "function": "AP"})
+        cs_id.replace("_", "-"): DeviceRecord(
+            asset={"host_name": name, "function": "AP", "classification": "WIRELESS"}
+        )
         for cs_id, name in names_by_cs_id.items()
     }
 

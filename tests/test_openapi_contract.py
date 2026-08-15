@@ -68,6 +68,14 @@ def test_assets_filter_still_supports_classification(assets_spec) -> None:
     assert "classification" in schemas["ListDevicesRequestFilter"]["properties"]
 
 
+def test_device_classifications_match_assets_enum(assets_spec) -> None:
+    """Fan-out list must stay aligned with DeviceClassificationFilter minus ALL."""
+    from orb_extreme_platformone.identity import DEVICE_CLASSIFICATIONS, ROLE_BY_CLASSIFICATION
+
+    enum = set(assets_spec["components"]["schemas"]["DeviceClassificationFilter"]["enum"])
+    assert set(DEVICE_CLASSIFICATIONS) == enum - {"ALL"}
+    assert set(ROLE_BY_CLASSIFICATION) <= set(DEVICE_CLASSIFICATIONS)
+
 def test_configstate_tables_client_uses_still_exist(configstate_spec) -> None:
     paths = configstate_spec["paths"]
     used_tables = [

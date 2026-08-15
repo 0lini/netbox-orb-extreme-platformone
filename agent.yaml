@@ -52,8 +52,9 @@ orb:
           # PLATFORMONE_API_URL: https://cloudapi.extremecloudiq.com   # default
 
           classification: ALL              # Assets device filter: ALL (default),
-                                           # SWITCH, WIRELESS, ROUTER, ... Port sync
-                                           # only ever runs for switch-OS devices.
+                                           # SWITCH, WIRELESS, ROUTER, ... ALL fans
+                                           # out per class; port sync is SWITCH-only,
+                                           # radio sync is WIRELESS-only.
           # A device's ConfigState location record (site / building / floor)
           # becomes its NetBox Site + nested Location chain; devices without
           # one fall back to the Assets API's flat site name. Platform ONE

@@ -13,6 +13,7 @@ SWITCH_ASSET_PEER = {
     "mac_address": "aabbccddee00",
     "product_type": "FabricEngine_5320_48P_8XE",
     "function": "Fabric Engine",
+    "classification": "SWITCH",
     "os_version": "9.2.1.0",
     "is_connected": True,
     "ip_address": "10.0.0.3",
@@ -124,6 +125,7 @@ def test_virtual_chassis_warns_on_duplicate_computed_names(stub_sdk, caplog) -> 
         "mac_address": "aabbccddee01",
         "product_type": "FabricEngine_5320_48P_8XE",
         "function": "Fabric Engine",
+        "classification": "SWITCH",
         "is_connected": True,
         "site_name": "Assets-Site",
     }

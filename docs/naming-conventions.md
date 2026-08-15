@@ -13,8 +13,8 @@ names point the wrong way.**
 | **`asset_device_id`** | The **same** ConfigState UUID, spelled as ConfigState's *filter field name* — despite the "asset" prefix | `str` |
 | **`asset_interface_id`** | ConfigState interface UUID; the join key across all port tables | `str` |
 | **inferred device** | ConfigState `InferredDevice.id` — a *third* id space, remapped to `cs_device_id` in `extract/clusters.py` | `str` |
-| **`function`** | Assets `Device.function` — the **OS family** string (`"FABRIC ENGINE"`, `"AP"`), not a Python callable | `str` |
-| **`classification`** | Assets device-class filter (`ALL`, `SWITCH`, `WIRELESS`) | `str` |
+| **`function`** | Assets `Device.function` — the **OS family** string (`"FABRIC ENGINE"`, `"AP"`), used for Platform / port-name rewrite only — not a Python callable | `str` |
+| **`classification`** | Assets device class stamped by `get_devices` from the list filter (`SWITCH`, `WIRELESS`, …). Drives DeviceRole and port/radio fan-out | `str` |
 
 Two rules follow:
 

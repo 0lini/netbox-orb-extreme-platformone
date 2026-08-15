@@ -64,7 +64,7 @@ def _device_identity_fields(record: DeviceRecord) -> dict:
     kwargs: dict = {}
     if record.site_name:
         kwargs["site"] = Site(name=record.site_name)
-    role = role_for(record.function)
+    role = role_for(record.classification)
     if role:
         role_name, role_slug = role
         kwargs["role"] = DeviceRole(name=role_name, slug=role_slug)

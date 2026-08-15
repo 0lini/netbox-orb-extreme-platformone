@@ -30,6 +30,7 @@ from .http import (
     PlatformOneTransport,
     truncate_error_body,
 )
+from .identity import DEVICE_CLASSIFICATIONS
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
@@ -157,18 +158,30 @@ class PlatformOneClient:
     def get_devices(self, *, classification: str = "ALL", limit: int = ASSETS_PAGE_LIMIT) -> Iterator[dict]:
         """Yield every Assets-API device of `classification`, across all pages.
 
-        `classification` (ALL, SWITCH, WIRELESS, ROUTER, ...) is passed
-        through verbatim so new upstream values need no client change.
+        Device rows do not include ``classification``, so each list call's
+        filter value is stamped onto every yielded device. ``ALL`` fans out
+        into one pull per concrete ``DEVICE_CLASSIFICATIONS`` entry (SWITCH,
+        WIRELESS, …) so role / port / radio gating can rely on that stamp
+        alone — no freestyle mapping from ``function``.
         """
-        yield from self._paginate(
-            "/assets/v1/devices",
-            page_param="page",
-            size_param="limit",
-            size=limit,
-            body={"classification": classification},
-            response_key="data",
-            total_pages=lambda payload, page: payload.get("total_pages") or page,
+        classes = (
+            DEVICE_CLASSIFICATIONS
+            if str(classification).strip().upper() == "ALL"
+            else (classification,)
         )
+        for cls in classes:
+            for device in self._paginate(
+                "/assets/v1/devices",
+                page_param="page",
+                size_param="limit",
+                size=limit,
+                body={"classification": cls},
+                response_key="data",
+                total_pages=lambda payload, page: payload.get("total_pages") or page,
+            ):
+                stamped = dict(device)
+                stamped["classification"] = cls
+                yield stamped
 
     def _retrieve_pages(
         self,

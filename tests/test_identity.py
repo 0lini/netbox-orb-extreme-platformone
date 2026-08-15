@@ -1,8 +1,10 @@
-"""identity.py unit tests: naming, switch detection, model mapping, locations."""
+"""identity.py unit tests: naming, classification, model mapping, locations."""
 
 from __future__ import annotations
 
 from orb_extreme_platformone.identity import (
+    DEVICE_CLASSIFICATIONS,
+    ROLE_BY_CLASSIFICATION,
     device_name,
     device_type_model_for,
     expand_location_paths,
@@ -44,18 +46,20 @@ def test_device_name_uses_hostname_only() -> None:
     assert device_name({"host_name": "   "}) is None
 
 
-def test_is_switch_recognizes_the_assets_switch_function_enum_values() -> None:
-    for function in ("Switch Engine", "Fabric Engine", "EXOS", "VOSS"):
-        assert is_switch(function)
-    assert not is_switch("AP")
-    assert not is_switch("Appliance")
+def test_is_switch_recognizes_only_switch_classification() -> None:
+    assert is_switch("SWITCH")
+    assert is_switch("switch")
+    assert not is_switch("WIRELESS")
+    assert not is_switch("ROUTER")
+    assert not is_switch("APPLIANCE")
     assert not is_switch(None)
 
 
-def test_is_ap_recognizes_access_points() -> None:
-    assert is_ap("AP")
-    assert is_ap("ap")
-    assert not is_ap("Fabric Engine")
+def test_is_ap_recognizes_wireless_classification() -> None:
+    assert is_ap("WIRELESS")
+    assert is_ap("wireless")
+    assert not is_ap("SWITCH")
+    assert not is_ap("AP")
     assert not is_ap(None)
 
 
@@ -73,22 +77,27 @@ def test_platform_name_tolerates_a_missing_family_or_version() -> None:
     assert platform_name("Unknown", None) is None
 
 
-def test_role_for_maps_functions_to_functional_roles() -> None:
-    assert role_for("Fabric Engine") == ("Switch", "switch")
-    assert role_for("Switch Engine") == ("Switch", "switch")
-    assert role_for("EXOS") == ("Switch", "switch")
-    assert role_for("VOSS") == ("Switch", "switch")
-    assert role_for("AP") == ("Wireless AP", "wireless-ap")
-    assert role_for("  Switch Engine  ") == ("Switch", "switch")
+def test_role_for_maps_classifications_to_closed_roles() -> None:
+    assert role_for("SWITCH") == ("Switch", "switch")
+    assert role_for("switch") == ("Switch", "switch")
+    assert role_for("WIRELESS") == ("Wireless", "wireless")
+    assert role_for("SDWAN") == ("SDWAN", "sdwan")
+    assert role_for("ROUTER") == ("Router", "router")
+    assert role_for("XIQ_SE") == ("XIQ SE", "xiq-se")
+    assert role_for("APPLIANCE") == ("Appliance", "appliance")
+    assert role_for("  SWITCH  ") == ("Switch", "switch")
 
 
-def test_role_for_passes_unlisted_functions_through_slugified() -> None:
-    assert role_for("Router") == ("Router", "router")
+def test_role_for_does_not_freestyle_unmapped_values() -> None:
+    assert role_for("Fabric Engine") is None
+    assert role_for("AP") is None
+    assert role_for("ALL") is None
+    assert role_for("UNKNOWN") is None
     assert role_for(None) is None
     assert role_for("") is None
     assert role_for("   ") is None
-    assert role_for("Unknown") is None
     assert role_for("!!!") is None
+    assert set(ROLE_BY_CLASSIFICATION) <= set(DEVICE_CLASSIFICATIONS)
     assert slugify("VOSS") == "voss"
     assert slugify("!!!") == ""
 

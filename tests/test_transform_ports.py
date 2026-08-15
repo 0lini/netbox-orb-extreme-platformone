@@ -620,6 +620,7 @@ def test_ports_to_entities_nests_device_site_role_and_type(stub_sdk) -> None:
         _tables(vlan_properties=[]),
         record=_port_record(
             function="Fabric Engine",
+            classification="SWITCH",
             site_name="Campus",
             product_type="FabricEngine_5320_48P_8XE",
         ),

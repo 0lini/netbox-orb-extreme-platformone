@@ -201,9 +201,11 @@ def test_devices_to_entities_without_function_or_version_asserts_no_platform(stu
     assert "platform" not in entities[-1]._kw["device"]._kw
 
 
-@pytest.mark.parametrize("function", [None, "Unknown", "   "])
-def test_devices_to_entities_omits_role_for_empty_or_unknown_function(stub_sdk, function) -> None:
-    asset = {**SWITCH_ASSET, "function": function}
+@pytest.mark.parametrize("classification", [None, "UNKNOWN", "ALL", "   "])
+def test_devices_to_entities_omits_role_for_empty_or_unmapped_classification(
+    stub_sdk, classification
+) -> None:
+    asset = {**SWITCH_ASSET, "classification": classification}
     entities = transform.devices_to_entities([_record(asset=asset)])
 
     assert "role" not in entities[-1]._kw["device"]._kw
