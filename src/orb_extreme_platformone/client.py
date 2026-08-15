@@ -32,9 +32,6 @@ from .http import (
 )
 from .identity import DEVICE_CLASSIFICATIONS
 
-# Policy / env values accepted by get_devices (ALL = fan-out over DEVICE_CLASSIFICATIONS).
-_SUPPORTED_DEVICE_CLASSIFICATIONS = frozenset({"ALL", *DEVICE_CLASSIFICATIONS})
-
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
 
@@ -159,21 +156,12 @@ class PlatformOneClient:
             page += 1
 
     def get_devices(self, *, classification: str = "ALL", limit: int = ASSETS_PAGE_LIMIT) -> Iterator[dict]:
-        """Yield every Assets-API device of `classification`, across all pages.
+        """Yield Assets devices, stamping ``classification`` on each row.
 
-        Device rows do not include ``classification``, so each list call's
-        filter value is stamped onto every yielded device. ``ALL`` fans out
-        into one pull per supported class (``SWITCH``, ``WIRELESS``) so role /
-        port / radio gating can rely on that stamp alone. Other Assets classes
-        are not synced.
+        Device rows omit classification, so ``ALL`` fans out to SWITCH then
+        WIRELESS and stamps the filter value used for each pull.
         """
-        requested = str(classification).strip().upper()
-        if requested not in _SUPPORTED_DEVICE_CLASSIFICATIONS:
-            msg = (
-                f"Unsupported classification {classification!r}; "
-                f"expected one of {sorted(_SUPPORTED_DEVICE_CLASSIFICATIONS)}"
-            )
-            raise ValueError(msg)
+        requested = str(classification).strip().upper() or "ALL"
         classes = DEVICE_CLASSIFICATIONS if requested == "ALL" else (requested,)
         for cls in classes:
             for device in self._paginate(
@@ -185,9 +173,7 @@ class PlatformOneClient:
                 response_key="data",
                 total_pages=lambda payload, page: payload.get("total_pages") or page,
             ):
-                stamped = dict(device)
-                stamped["classification"] = cls
-                yield stamped
+                yield {**device, "classification": cls}
 
     def _retrieve_pages(
         self,

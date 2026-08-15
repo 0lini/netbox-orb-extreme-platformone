@@ -13,8 +13,8 @@ from dataclasses import dataclass
 from functools import cached_property
 
 # Assets API `Device.function` values that are switch OSes, mapped to the
-# canonical OS-family name used in the NetBox Platform. Role / port-fan-out /
-# radio-fan-out use ``classification`` instead; ``function`` is OS only.
+# canonical OS-family name used in the NetBox Platform. Role and fan-out use
+# ``classification``; ``function`` is OS only.
 PLATFORM_BY_FUNCTION = {
     "SWITCH ENGINE": "Switch Engine",
     "FABRIC ENGINE": "Fabric Engine",
@@ -22,27 +22,9 @@ PLATFORM_BY_FUNCTION = {
     "VOSS": "VOSS",
 }
 
-# Assets classifications this worker syncs. ``get_devices(classification="ALL")``
-# pulls each of these and stamps the value onto every returned device — Device
-# rows do not carry classification. Other Assets classes (ROUTER, SDWAN, …)
-# are out of scope.
-DEVICE_CLASSIFICATIONS = (
-    "SWITCH",
-    "WIRELESS",
-)
-
-# Closed NetBox DeviceRole names for each supported Assets classification.
-# No pass-through of free-form strings; anything else asserts no role.
-ROLE_BY_CLASSIFICATION = {
-    "SWITCH": "Switch",
-    "WIRELESS": "Wireless",
-}
-
-# Gates the per-switch ConfigState port sync in backend.py.
-SWITCH_CLASSIFICATION = "SWITCH"
-
-# Gates the AP radio / WLAN sync in backend.py (Assets buckets APs as WIRELESS).
-AP_CLASSIFICATION = "WIRELESS"
+# Classes this worker syncs. ``get_devices(ALL)`` pulls each and stamps it —
+# Device rows do not carry classification.
+DEVICE_CLASSIFICATIONS = ("SWITCH", "WIRELESS")
 
 # OS families whose CLI names ports slot/port (1/52). Platform ONE ConfigState
 # reports slot:port (1:52) for every OS; Switch Engine / EXOS are colon-native
@@ -57,13 +39,13 @@ _COLON_PORT_NAME_RE = re.compile(r"^\d+(?::[A-Za-z0-9]+)+$")
 
 
 def is_switch(classification: str | None) -> bool:
-    """Whether an Assets ``classification`` is SWITCH (port fan-out applies)."""
-    return classification is not None and classification.upper() == SWITCH_CLASSIFICATION
+    """Whether Assets ``classification`` is SWITCH (port fan-out)."""
+    return bool(classification) and classification.upper() == "SWITCH"
 
 
 def is_ap(classification: str | None) -> bool:
-    """Whether an Assets ``classification`` is WIRELESS (radio/WLAN fan-out)."""
-    return classification is not None and classification.upper() == AP_CLASSIFICATION
+    """Whether Assets ``classification`` is WIRELESS (radio/WLAN fan-out)."""
+    return bool(classification) and classification.upper() == "WIRELESS"
 
 
 def native_port_name(name: str, function: str | None) -> str:
@@ -110,21 +92,17 @@ def slugify(value: str) -> str:
 
 
 def role_for(classification: str | None) -> tuple[str, str] | None:
-    """Map Assets ``classification`` to a NetBox DeviceRole (name, slug).
+    """NetBox DeviceRole from Assets ``classification`` (SWITCH / WIRELESS).
 
-    Only the closed ``ROLE_BY_CLASSIFICATION`` map is used — no freestyle
-    pass-through of other strings. Empty / unmapped values assert no role
-    (never invent ``network``, ``unknown``, …).
+    Name is the classification title-cased; anything else asserts no role.
     """
-    if not classification or not str(classification).strip():
+    if not classification:
         return None
-    name = ROLE_BY_CLASSIFICATION.get(str(classification).strip().upper())
-    if not name:
+    key = str(classification).strip().upper()
+    if key not in DEVICE_CLASSIFICATIONS:
         return None
-    slug = slugify(name)
-    if not slug:
-        return None
-    return name, slug
+    name = key.title()
+    return name, slugify(name)
 
 
 def device_type_model_for(product_type: str | None) -> str | None:

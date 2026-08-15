@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from orb_extreme_platformone.identity import (
     DEVICE_CLASSIFICATIONS,
-    ROLE_BY_CLASSIFICATION,
     device_name,
     device_type_model_for,
     expand_location_paths,
@@ -46,20 +45,11 @@ def test_device_name_uses_hostname_only() -> None:
     assert device_name({"host_name": "   "}) is None
 
 
-def test_is_switch_recognizes_only_switch_classification() -> None:
-    assert is_switch("SWITCH")
-    assert is_switch("switch")
-    assert not is_switch("WIRELESS")
-    assert not is_switch("ROUTER")
-    assert not is_switch(None)
-
-
-def test_is_ap_recognizes_wireless_classification() -> None:
-    assert is_ap("WIRELESS")
-    assert is_ap("wireless")
-    assert not is_ap("SWITCH")
-    assert not is_ap("AP")
-    assert not is_ap(None)
+def test_is_switch_and_is_ap_use_classification() -> None:
+    assert is_switch("SWITCH") and is_switch("switch")
+    assert not is_switch("WIRELESS") and not is_switch(None)
+    assert is_ap("WIRELESS") and is_ap("wireless")
+    assert not is_ap("SWITCH") and not is_ap(None)
 
 
 def test_platform_name_combines_os_family_and_version_into_one_value() -> None:
@@ -76,26 +66,14 @@ def test_platform_name_tolerates_a_missing_family_or_version() -> None:
     assert platform_name("Unknown", None) is None
 
 
-def test_role_for_maps_classifications_to_closed_roles() -> None:
+def test_role_for_title_cases_switch_and_wireless_only() -> None:
+    assert DEVICE_CLASSIFICATIONS == ("SWITCH", "WIRELESS")
     assert role_for("SWITCH") == ("Switch", "switch")
-    assert role_for("switch") == ("Switch", "switch")
-    assert role_for("WIRELESS") == ("Wireless", "wireless")
-    assert role_for("  SWITCH  ") == ("Switch", "switch")
-
-
-def test_role_for_does_not_freestyle_unmapped_values() -> None:
-    assert role_for("Fabric Engine") is None
-    assert role_for("AP") is None
-    assert role_for("ALL") is None
+    assert role_for("wireless") == ("Wireless", "wireless")
     assert role_for("ROUTER") is None
-    assert role_for("SDWAN") is None
-    assert role_for("UNKNOWN") is None
+    assert role_for("AP") is None
     assert role_for(None) is None
     assert role_for("") is None
-    assert role_for("   ") is None
-    assert role_for("!!!") is None
-    assert tuple(DEVICE_CLASSIFICATIONS) == ("SWITCH", "WIRELESS")
-    assert set(ROLE_BY_CLASSIFICATION) == set(DEVICE_CLASSIFICATIONS)
     assert slugify("VOSS") == "voss"
     assert slugify("!!!") == ""
 

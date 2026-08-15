@@ -371,15 +371,8 @@ unexpected and skipped with a warning.
 
 ### Device role
 
-Assets `classification` (stamped from the list filter) maps to a NetBox
-DeviceRole via a closed table: `SWITCH` → **Switch**, `WIRELESS` →
-**Wireless**. Only those two classes are synced. There is no freestyle
-pass-through of other strings (including Assets `function`). Missing /
-unmapped values assert **no** role — never a static default (`network`,
-`unknown`, …). Diode treats `Device.role` as optional, so omitting it leaves
-role NetBox-owned (same Assurance posture as omitting `Interface.type` when
-the connector code is unverified). NetBox's UI still requires a role for
-manually created devices; that does not force the worker to invent one.
+Assets `classification` maps to DeviceRole as title case: `SWITCH` →
+**Switch**, `WIRELESS` → **Wireless**. Anything else asserts no role.
 
 ### Platform and OS version
 
