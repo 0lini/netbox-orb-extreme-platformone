@@ -113,9 +113,12 @@ It is not a policy knob.
 | Path | Purpose |
 |------|---------|
 | `src/orb_extreme_platformone/backend.py` | Orb Agent worker entrypoint: policy tick orchestration (bootstrap → extract → transform). |
+| `src/orb_extreme_platformone/config.py` | Policy/env resolution, site scope parsing, client construction. |
 | `src/orb_extreme_platformone/client.py` | Platform ONE HTTP client: `POST /login` (or static token), paginated Assets listing, batched ConfigState `retrieve()`. |
 | `src/orb_extreme_platformone/extract/` | **Extract** — table catalogs, concurrent retrieves, Assets↔ConfigState correlation, port / wireless / cluster phases. |
-| `src/orb_extreme_platformone/extract/tables.py` | ConfigState table catalogs (`PORT_TABLES`, `WIRELESS_TABLES`, `FABRIC_DEVICE_TABLES`, LAG/interface filters). |
+| `src/orb_extreme_platformone/extract/source.py` | `ConfigStateSource` Protocol — the single `retrieve` capability extract depends on. |
+| `src/orb_extreme_platformone/extract/index.py` | Fan-out indexes (`FanoutContext`) over correlated device records. |
+| `src/orb_extreme_platformone/catalog.py` | ConfigState table catalogs (`PORT_TABLES`, `WIRELESS_TABLES`, `FABRIC_DEVICE_TABLES`, LAG/interface filters). |
 | `src/orb_extreme_platformone/extract/retrieve.py` | Concurrent batched ConfigState retrieves with per-table degradation. |
 | `src/orb_extreme_platformone/extract/correlate.py` | Join Assets devices to ConfigState devices (by serial) and locations. |
 | `src/orb_extreme_platformone/extract/ports.py` | Switch port / LAG / PoE / IP extract phases. |
@@ -156,7 +159,7 @@ docker run --rm \
   -e DIODE_CLIENT_ID -e DIODE_CLIENT_SECRET \
   -e PLATFORMONE_USERNAME -e PLATFORMONE_PASSWORD \
   -e NETBOX_API_URL -e NETBOX_API_TOKEN \
-  netboxlabs/orb-agent:2.11.0 run -c /opt/orb/agent.yaml
+  netboxlabs/orb-agent:2.11.0@sha256:3850e72d423509c2c7c11866054ae1abde3d7d4ba60358e8364ef08e7c896705 run -c /opt/orb/agent.yaml
 ```
 
 `workers.txt` installs the mounted repo (`.`) so Orb can import
@@ -192,8 +195,11 @@ Policy `config:` keys (see `agent.yaml` for a complete example):
 | `scope.sites` | Restrict the sync to specific resolved sites (case-insensitive); `["*"]` for all. | `["*"]` |
 
 Every credential key can be provided in the policy `config:` or as a
-same-named environment variable; policy config takes precedence when the key
-is set (including an empty string).
+same-named environment variable. For **secrets** (`PLATFORMONE_API_TOKEN` /
+username/password, `NETBOX_API_TOKEN`), the environment wins when set so an
+empty YAML value cannot override a secret store. For other keys, policy
+config wins when set (including an empty string); only a missing key falls
+through to the environment.
 
 ### Authentication
 

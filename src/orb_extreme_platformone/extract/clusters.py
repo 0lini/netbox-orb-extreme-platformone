@@ -3,11 +3,15 @@
 from __future__ import annotations
 
 import logging
+from typing import TYPE_CHECKING
 
 from orb_extreme_platformone.catalog import CLUSTER_MEMBER_FILTERS
-from orb_extreme_platformone.client import PlatformOneApiError, PlatformOneClient
+from orb_extreme_platformone.client import PlatformOneApiError
 
 from .retrieve import retrieve_parallel
+
+if TYPE_CHECKING:
+    from .source import ConfigStateSource
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +31,7 @@ def _remapped_cluster(cluster: dict, inferred_to_asset: dict[str, str]) -> tuple
     return cluster_id, {**cluster, "device_one_id": one, "device_two_id": two}
 
 
-def extract_inferred_clusters(client: PlatformOneClient, cs_device_ids: list[str]) -> list[dict]:
+def extract_inferred_clusters(client: ConfigStateSource, cs_device_ids: list[str]) -> list[dict]:
     """Fetch InferredCluster rows for the given AssetDevice UUIDs.
 
     Filtering `retrieve-inferred-cluster` by AssetDevice UUIDs silently

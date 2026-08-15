@@ -59,18 +59,35 @@ def test_bootstrap_true_without_netbox_creds_fails_closed(monkeypatch) -> None:
         list(Backend().run("platformone_worker", policy))
 
 
-def test_policy_or_env_prefers_explicit_empty_policy_value(monkeypatch) -> None:
-    """Empty policy string wins over environment (None alone falls through)."""
-    from orb_extreme_platformone import backend as backend_mod
+def test_policy_or_env_secrets_prefer_environment(monkeypatch) -> None:
+    """Credential keys: environment wins over empty/stale policy values."""
+    from orb_extreme_platformone import config as config_mod
 
     monkeypatch.setenv("PLATFORMONE_API_TOKEN", "from-env")
 
-    class _Cfg:
+    class _EmptyPolicy:
         PLATFORMONE_API_TOKEN = ""
 
-    assert backend_mod._policy_or_env(_Cfg(), "PLATFORMONE_API_TOKEN") == ""
+    assert config_mod.policy_or_env(_EmptyPolicy(), "PLATFORMONE_API_TOKEN") == "from-env"
 
     class _Missing:
         pass
 
-    assert backend_mod._policy_or_env(_Missing(), "PLATFORMONE_API_TOKEN") == "from-env"
+    assert config_mod.policy_or_env(_Missing(), "PLATFORMONE_API_TOKEN") == "from-env"
+
+
+def test_policy_or_env_non_secret_prefers_explicit_empty_policy_value(monkeypatch) -> None:
+    """Non-secret keys: empty policy string still wins over environment."""
+    from orb_extreme_platformone import config as config_mod
+
+    monkeypatch.setenv("PLATFORMONE_API_URL", "https://from-env.example")
+
+    class _Cfg:
+        PLATFORMONE_API_URL = ""
+
+    assert config_mod.policy_or_env(_Cfg(), "PLATFORMONE_API_URL") == ""
+
+    class _Missing:
+        pass
+
+    assert config_mod.policy_or_env(_Missing(), "PLATFORMONE_API_URL") == "https://from-env.example"

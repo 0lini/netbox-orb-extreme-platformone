@@ -9,11 +9,11 @@ from orb_extreme_platformone.catalog import WIRELESS_TABLES
 from .retrieve import extract_device_table_buckets
 
 if TYPE_CHECKING:
-    from orb_extreme_platformone.client import PlatformOneClient
+    from .source import ConfigStateSource
 
 
 def extract_wireless_tables(
-    client: PlatformOneClient,
+    client: ConfigStateSource,
     cs_device_ids: list[str],
     policy_name: str,
 ) -> tuple[dict[str, dict[str, list[dict]]], list[str]]:

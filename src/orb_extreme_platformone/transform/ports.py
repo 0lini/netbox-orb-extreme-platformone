@@ -47,7 +47,7 @@ def ports_to_entities(tables: dict[str, list[dict]], *, record: DeviceRecord) ->
     The record's OS family rewrites ConfigState's slot:port notation to the
     OS-native form (1:52 -> 1/52 on Fabric Engine / VOSS) before any joining,
     so every emitted name and cross-reference agrees. Callers must only pass
-    records that have a name (see backend._fanout_context).
+    records that have a name (see extract.index.fanout_context).
     """
     function = record.function
     if function and function.upper() in SLASH_PORT_FUNCTIONS:

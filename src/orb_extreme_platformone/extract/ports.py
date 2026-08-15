@@ -10,7 +10,7 @@ from orb_extreme_platformone.client import CONFIGSTATE_FILTER_CHUNK_SIZE
 from .retrieve import extract_device_table_buckets, retrieve_ok
 
 if TYPE_CHECKING:
-    from orb_extreme_platformone.client import PlatformOneClient
+    from .source import ConfigStateSource
 
 # Capabilities have no asset_interface_id; derive the rest from PORT_TABLES so
 # a new interface-id-bearing table cannot be forgotten here.
@@ -38,7 +38,7 @@ def collect_interface_ids(
 
 
 def attach_interface_id_tables(
-    client: PlatformOneClient,
+    client: ConfigStateSource,
     tables_by_device: dict[str, dict[str, list[dict]]],
     policy_name: str,
     failed_tables: list[str],
@@ -88,7 +88,7 @@ def attach_interface_id_tables(
 
 
 def extract_port_tables(
-    client: PlatformOneClient,
+    client: ConfigStateSource,
     cs_device_ids: list[str],
     policy_name: str,
 ) -> tuple[dict[str, dict[str, list[dict]]], list[str]]:

@@ -11,6 +11,7 @@ from orb_extreme_platformone.catalog import (
 )
 
 from .correlate import correlate, correlated_records
+from .source import ConfigStateSource
 
 __all__ = [
     "CLUSTER_MEMBER_FILTERS",
@@ -18,6 +19,7 @@ __all__ = [
     "INTERFACE_ID_TABLES",
     "PORT_TABLES",
     "WIRELESS_TABLES",
+    "ConfigStateSource",
     "correlate",
     "correlated_records",
 ]

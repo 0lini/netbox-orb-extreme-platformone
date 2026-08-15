@@ -5,16 +5,18 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-from orb_extreme_platformone.client import PlatformOneApiError, PlatformOneClient
+from orb_extreme_platformone.client import PlatformOneApiError
 from orb_extreme_platformone.identity import DeviceRecord
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable
 
+    from .source import ConfigStateSource
+
 logger = logging.getLogger(__name__)
 
 
-def extract_cs_devices(client: PlatformOneClient, assets: list[dict]) -> list[dict]:
+def extract_cs_devices(client: ConfigStateSource, assets: list[dict]) -> list[dict]:
     """Fetch the ConfigState AssetDevice records for the given Assets devices.
 
     ConfigState rejects an empty GetRequest body (code 1727: at least one
@@ -75,7 +77,7 @@ def correlate(assets: list[dict], cs_devices: list[dict]) -> dict[object, dict]:
 
 
 def correlated_records(
-    client: PlatformOneClient,
+    client: ConfigStateSource,
     assets: list[dict],
     policy_name: str,
 ) -> list[DeviceRecord]:

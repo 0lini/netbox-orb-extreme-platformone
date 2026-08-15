@@ -6,8 +6,10 @@ import logging
 from concurrent.futures import ThreadPoolExecutor
 from typing import TYPE_CHECKING, NamedTuple
 
-from orb_extreme_platformone.client import PlatformOneApiError, PlatformOneClient
+from orb_extreme_platformone.client import PlatformOneApiError
 from orb_extreme_platformone.http import MAX_CONCURRENT_REQUESTS
+
+from .source import ConfigStateSource
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -25,6 +27,15 @@ _POOL = ThreadPoolExecutor(
     thread_name_prefix="p1-retrieve",
 )
 
+__all__ = [
+    "ConfigStateSource",
+    "RetrieveResult",
+    "TableCatalog",
+    "extract_device_table_buckets",
+    "retrieve_ok",
+    "retrieve_parallel",
+]
+
 
 class RetrieveResult(NamedTuple):
     """One ConfigState retrieve outcome: rows on success, error on failure."""
@@ -35,7 +46,7 @@ class RetrieveResult(NamedTuple):
 
 
 def retrieve_parallel(
-    client: PlatformOneClient,
+    client: ConfigStateSource,
     jobs: list[tuple[str, dict]],
 ) -> list[RetrieveResult]:
     """Run independent ConfigState retrieves concurrently.
@@ -66,7 +77,7 @@ def retrieve_parallel(
 
 
 def retrieve_ok(
-    client: PlatformOneClient,
+    client: ConfigStateSource,
     jobs: list[tuple[str, dict]],
     contexts: list,
     *,
@@ -108,7 +119,7 @@ def retrieve_ok(
 
 
 def extract_device_table_buckets(
-    client: PlatformOneClient,
+    client: ConfigStateSource,
     cs_device_ids: list[str],
     catalog: TableCatalog,
     *,

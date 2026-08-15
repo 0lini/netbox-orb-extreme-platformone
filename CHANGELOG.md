@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `ConfigStateSource` Protocol for the extract layer: ConfigState retrieves
+  depend on a one-method `retrieve` contract instead of the concrete
+  `PlatformOneClient`, so extract tests can use a five-line fake.
+- `config.py` (policy/env resolution + client construction) and
+  `extract/index.py` (fan-out indexes) split out of `backend.py`.
 - Retry with exponential backoff for transient Platform ONE failures (429/5xx and
   connection errors), honouring `Retry-After`. A single upstream blip previously
   cost a whole ConfigState table until the next scheduled run.
@@ -24,6 +29,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   once so NetBox creates the new field definitions.
 
 ### Changed
+- `Backend.run` streams Diode entities (devices → ports/radios → primary-IP
+  follow-ups) instead of materializing the full estate list before return.
+- Credential keys prefer the environment when set so an empty policy value
+  cannot override a secret store; non-secret keys keep policy-wins semantics.
+- Example Orb Agent image references pin
+  `netboxlabs/orb-agent:2.11.0@sha256:3850e72d423509c2c7c11866054ae1abde3d7d4ba60358e8364ef08e7c896705`.
 - The pipeline is built around a `DeviceRecord` domain type instead of an
   untyped dict plus a parallel "meta" dict; name, site, OS family and location
   are derived properties resolved once. Entity output is unchanged.

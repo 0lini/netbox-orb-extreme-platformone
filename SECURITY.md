@@ -82,11 +82,14 @@ from free-form policy strings.
 **Do not** commit dry-run JSON, inventory exports, or `.env` files. Dry-run
 output can contain hostnames, serials, MACs, and management IPs.
 
-Policy config currently wins over environment when the key is set (including
-an empty string); only a missing key falls through to the environment
-(`_cfg_or_env`). Prefer leaving secret values out of checked-in YAML and
-supplying them only via the environment so Orb policy objects never carry
-plaintext secrets.
+Policy config wins over environment for non-secret keys when the key is set
+(including an empty string); only a missing key falls through to the
+environment. **Credential keys** (`PLATFORMONE_API_TOKEN` /
+`PLATFORMONE_USERNAME` / `PLATFORMONE_PASSWORD` / `NETBOX_API_TOKEN`) prefer
+the environment when set, so an empty YAML value cannot mask a secret store.
+Prefer leaving secret values out of checked-in YAML and supplying them only
+via the environment (or `${VAR}` placeholders) so Orb policy objects never
+carry plaintext secrets.
 
 ---
 
@@ -105,13 +108,17 @@ plaintext secrets.
 
 Ordered by practical impact:
 
-1. **Pin** `orb-agent` image tags for reproducible deploys. The checked-in
-   example uses `netboxlabs/orb-agent:2.11.0`; prefer digests in production.
-2. Prefer **env-only secrets** in Orb policy (stop winning from `config:` for
-   credential keys) if Orb can guarantee env substitution without YAML values.
-   Dev/CI installs are locked via `uv.lock` (Renovate lockfile maintenance +
+1. Prefer **image digests** for `orb-agent` in production (not just a floating
+   tag). The checked-in examples pin
+   `netboxlabs/orb-agent:2.11.0@sha256:3850e72d423509c2c7c11866054ae1abde3d7d4ba60358e8364ef08e7c896705`.
+2. Credential keys (`PLATFORMONE_*` secrets, `NETBOX_API_TOKEN`) prefer the
+   environment when set, so an empty/stale policy value cannot override a
+   secret store. Still prefer omitting plaintext secrets from YAML entirely
+   and using `${VAR}` placeholders (or env-only).
+3. Dev/CI installs are locked via `uv.lock` (Renovate lockfile maintenance +
    build-system floor bumps). Runtime installs from Orb `workers.txt` should
-   pin a published package version rather than floating on `.` + lower bounds.
+   pin a published package version rather than floating on `.` + lower bounds
+   once the package is published to PyPI.
 
 ---
 
